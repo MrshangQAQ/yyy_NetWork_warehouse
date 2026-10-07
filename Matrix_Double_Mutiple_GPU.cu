@@ -6,6 +6,10 @@
 // 2 = 只测「计算阶段」：共享内存用常量填充，完全不读全局内存
 #define ABLATION_MODE 0
 constexpr int Shared_Memory_Size= 24064;
+//Shared_Memory备选值：
+// 32256
+// 24064
+// 48640
 static double* d_mat1 = nullptr; static size_t cap1 = 0;
 static double* d_mat2 = nullptr; static size_t cap2 = 0;
 static double* d_out = nullptr; static size_t capO = 0;
@@ -15,15 +19,18 @@ static float* d_mat2_f = nullptr; static size_t cap2f = 0;
 constexpr int kBlockSize = 16;
 constexpr int kColsPerThr = 4;
 constexpr int kRowsPerThr = 4;
-constexpr int kInnerPerT = (Shared_Memory_Size/(2*kBlockSize*kColsPerThr*sizeof(float)))%2==0?// = 49152/(2*4*16*4)→96 取奇 95
-			 (Shared_Memory_Size / (2 * kBlockSize * kColsPerThr * sizeof(float)))-1: 
-		   	 (Shared_Memory_Size / (2 * kBlockSize * kColsPerThr * sizeof(float)));                          
-constexpr int kTileCols = kBlockSize * kColsPerThr;    // 64，每个block总共要计算多少列
-constexpr int kNThreads = kBlockSize * kBlockSize;     // 256，每个block的总线程数
+constexpr int kInnerPerT = (Shared_Memory_Size / (kBlockSize * kColsPerThr * sizeof(float) + kBlockSize * kRowsPerThr * sizeof(float))) %2==0?//
+							Shared_Memory_Size / (kBlockSize * kColsPerThr * sizeof(float) + kBlockSize * kRowsPerThr * sizeof(float))  -1:
+							Shared_Memory_Size / (kBlockSize * kColsPerThr * sizeof(float) + kBlockSize * kRowsPerThr * sizeof(float))    ;
+constexpr int kTileCols = kBlockSize * kColsPerThr;     // 每个block总共要计算多少列
+constexpr int kTileRows = kBlockSize * kRowsPerThr;		//每个block总共要计算多少行
+constexpr int kNThreads = kBlockSize * kBlockSize;     // 一般为256，每个block的总线程数
+
 __global__ void DoubleToFloat_Kernel(const double* __restrict src, float* __restrict dst, int n) {
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
 	if (i < n) dst[i] = (float)src[i];   // 合并访存，纯带宽活
 }
+
 /// <summary>
 /// 
 /// </summary>
@@ -38,7 +45,7 @@ __global__ void Matrix_Double_Mutiple_GPU_Kernel(const float* __restrict d_mat1_
 	//我们约定y对应row，x对应col
 	//同时存储mat1，mat2的数据，下面每个线程会单独持有两个指针，一个表示mat1的0元素的地址，一个表示mat2的0元素的地址（mat1在前,mat2在后）
 	extern __shared__ float Mat_Region[];
-	//我们现在来做寄存器优化，每个线程计算4*4的区域的新矩阵的值(这里硬编码了)
+	//我们现在来做寄存器优化，每个线程计算4*8的区域的新矩阵的值(这里硬编码了)
 	int RegionSize_per_threads = kColsPerThr * kRowsPerThr;
 	//表示每次需要读取多少个内维数据，和总共需要读取多少次内维数据(隐式的依赖传入block的DimX=DimY,col_per_threads=row_per_threads)
 	int K=(inner+ kInnerPerT -1)/ kInnerPerT;
@@ -57,13 +64,14 @@ __global__ void Matrix_Double_Mutiple_GPU_Kernel(const float* __restrict d_mat1_
 	const float*  Mat2_Base_Address = d_mat2_ptr + blockIdx.x * (kBlockSize * kRowsPerThr);//这里不乘inner了，直接表示从mat2的哪一列开始读
 	//mat1和mat2读取时的基础地址，每读完一轮，会重新写入（实际上,以下计算隐式依赖blockDim.x=blockDim.y与col_per_threads=row_per_threads）
 	float* Mat1_Region = Mat_Region + RTYIT;
-	float* Mat2_Region = Mat_Region + kInnerPerT * (kBlockSize * kColsPerThr);
+
+	float* Mat2_Region = Mat_Region + kInnerPerT * (kBlockSize * kRowsPerThr);//Mat_Region的基址+Mat1所占用的位置
+	float* Mat2_Region_Plus_CTXIT = Mat2_Region + CTXIT;
 	//得到该block右上角的元素，在NewData中的位置
 	int Block_Base_Address = 
-		kBlockSize * (blockIdx.y * kColsPerThr) * cols + //计算该块在grid中的哪一行，乘以cols，得到该行的0号元素，在NewData中的位置
-		kBlockSize * (blockIdx.x * kRowsPerThr);//得到该块在grid中的哪一列，再乘以每个块的列数，得到该块的右上角再NewData中的位置
-	//后面只+tx，写入的时候偏差16，防止撞bank
-	int Theard_Base_Address = ty * kColsPerThr * cols + tx * kRowsPerThr;
+		kBlockSize * (blockIdx.y * kRowsPerThr) * cols + //计算该块在grid中的哪一行，乘以cols，得到该行的0号元素，在NewData中的位置
+		kBlockSize * (blockIdx.x * kColsPerThr);//得到该块在grid中的哪一列，再乘以每个块的列数，得到该块的右上角再NewData中的位置
+	int Theard_Base_Address = (ty * kRowsPerThr) * cols + tx * kColsPerThr;
 	//NBA:NewDataAddress
 	double* NBA = d_newData_ptr + Block_Base_Address + Theard_Base_Address;//计算该线程左上角元素在NewData中的位置;
 	
@@ -74,8 +82,8 @@ __global__ void Matrix_Double_Mutiple_GPU_Kernel(const float* __restrict d_mat1_
 		  sum30 = 0, sum31 = 0, sum32 = 0, sum33 = 0
 		;
 	//该线程要将sum00放到新矩阵的什么位置（用于越界检查）
-	int RowOut = (blockIdx.y * kBlockSize + ty) * kColsPerThr;
-	int ColOut = (blockIdx.x * kBlockSize + tx) * kRowsPerThr;//这里把tx提到外面，对应下面的偏差变为16，每个线程写一部分
+	int RowOut = (blockIdx.y * kBlockSize + ty) * kRowsPerThr;
+	int ColOut = (blockIdx.x * kBlockSize + tx) * kColsPerThr;//这里把tx提到外面，对应下面的偏差变为16，每个线程写一部分
 	//检查行/列，是否越界
 	// IR0A:Is row0 access
 	bool IR0A = RowOut     < rows;
@@ -118,18 +126,16 @@ __global__ void Matrix_Double_Mutiple_GPU_Kernel(const float* __restrict d_mat1_
 	bool IsAccessRowIdx1 = (RowIdx0 + 1) < rows;
 	bool IsAccessRowIdx2 = (RowIdx0 + 2) < rows;
 	bool IsAccessRowIdx3 = (RowIdx0 + 3) < rows;
-	//int RowIdx1 = RowIdx0 + 1;
-	//int RowIdx2 = RowIdx0 + 2;
-	//int RowIdx3 = RowIdx0 + 3;
-	int ColIdx0 = (blockIdx.x * kBlockSize + ty) * kColsPerThr;   // blockIdx.x * blockDim.x * col_per_threads，同理，表示的是读取B时的基础地址，+ty（因为是按每ty为分配1层进行填充的），表示该线程，实际上读入的是B的哪一列
-	bool IsAccessColIdx0 = (ColIdx0) < cols;
-	bool IsAccessColIdx1 = (ColIdx0 + 1) < cols;
-	bool IsAccessColIdx2 = (ColIdx0 + 2) < cols;
-	bool IsAccessColIdx3 = (ColIdx0 + 3) < cols;
-
-	//int ColIdx1 = ColIdx0 + 1;
-	//int ColIdx2 = ColIdx0 + 2;
-	//int ColIdx3 = ColIdx0 + 3;
+	//Col的版本现已弃用
+	//int ColIdx0 = (blockIdx.x * kBlockSize + ty) * kColsPerThr;   // blockIdx.x * blockDim.x * col_per_threads，同理，表示的是读取B时的基础地址，+ty（因为是按每ty为分配1层进行填充的），表示该线程，实际上读入的是B的哪一列
+	//bool IsAccessColIdx0 = (ColIdx0) < cols;
+	//bool IsAccessColIdx1 = (ColIdx0 + 1) < cols;
+	//bool IsAccessColIdx2 = (ColIdx0 + 2) < cols;
+	//bool IsAccessColIdx3 = (ColIdx0 + 3) < cols;
+	//bool IsAccessColIdx4 = (ColIdx0 + 4) < cols;
+	//bool IsAccessColIdx5 = (ColIdx0 + 5) < cols;
+	//bool IsAccessColIdx6 = (ColIdx0 + 6) < cols;
+	//bool IsAccessColIdx7 = (ColIdx0 + 7) < cols;
 	
 	//计算列所需要的一些常量
 	//外层循环，逐步计算出sum
@@ -176,37 +182,38 @@ __global__ void Matrix_Double_Mutiple_GPU_Kernel(const float* __restrict d_mat1_
 			//const int nthreads = blockDim.x * blockDim.y;                 
 			//const int tileCols = blockDim.x * kColsPerThr;                
 			//const int col_base = kBlockSize * kTileCols;   // 本 block 的起始全局列号 = bx*64
-			const int tid = ty * kBlockSize + tx;
+			const int tid = ty * kBlockSize + tx;//这是第几个线程，实际上，我们共有kTileCols个列，我们希望这256个线程，每个线程一次填充某行的1列，直到该列被填完，每次填充N*KTileCols个部分，N=kNThreads/kTileCols
 			//const int nthreads = kNThreads;                   // 256
 			//const int tileCols = kTileCols;                // 64
 			for (int idx = tid; idx < kTileCols * kInnerPerT; idx += kNThreads) {
-				const int kIdx = idx / kTileCols;      // 内维方向（慢变），等价于原来的 in
-				const int cIdx = idx % kTileCols;      // 通道方向（快变），0..63
+				const int kIdx = idx / kTileCols;      // 内维方向（慢变），等价于原来的 in，这里应该是0，2，4。。。。
+				const int cIdx = idx % kTileCols;      // 通道方向（快变），0.....127
 #if ABLATION_MODE == 2
 				//【消融·计算模式】共享内存用常量填充，完全不读全局内存
 				Mat2_Region[cIdx * kInnerPerT + kIdx] = 1.0f;
 #else
 				const int r  = in_base + kIdx;        // 全局行号
-				const int gc = kBlockSize * kTileCols + cIdx;       // 全局列号
+				const int gc = blockIdx.x * kTileCols + cIdx;       // 全局列号
 				const bool ok = (r < inner) && (gc < cols);   // 越界保护（等价于原来的 IsAccessColIdx + in_base 判断）
 
 				Mat2_Region[cIdx * kInnerPerT + kIdx] =
-					ok ? (float)d_mat2_ptr[(size_t)r * cols + gc] : 0.0f;
+					ok ? d_mat2_ptr[(size_t)r * cols + gc] : 0.0f;
 #endif
 			}
 		}
 		__syncthreads();
-		/*//调试代码，出现Bug时选个小矩阵打印一下
-		if (tx == 0 && ty == 0) {
-			for (int i = 0;i < blockDim.x * 4;i++) {
-				for (int j = 0;j < inner_per_times;j++) {
-					printf("%0.f", Mat2_Region[i * inner_per_times + j]);
-				}
-				printf("\n");
-			}
+		//调试代码，出现Bug时选个小矩阵打印一下
+		/*
+		if (blockIdx.x == 1 && blockIdx.y == 1 && tx == 0 && ty == 0) {
+			printf("%0.f\n", Mat2_Region[0]);
+			//for (int i = 0;i < kTileCols;i++) {
+			//	for (int j = 0;j < kInnerPerT;j++) {
+			//		printf("%0.f", Mat2_Region[i * kInnerPerT + j]);
+			//	}
+			//	printf("\n");
+			//}
 		}
 		*/
-		
 		//阻滞，保证共享的部分被完全初始化再开始读，计算矩阵
 		//计算该位置处乘法的结果
 		//TM1BA:The_Mat1_Base_Address，这里进行了强度削减，原来为
@@ -220,10 +227,10 @@ __global__ void Matrix_Double_Mutiple_GPU_Kernel(const float* __restrict d_mat1_
 		const float* TM1BA2 = Mat1_Region + 2 * kInnerPerT;
 		const float* TM1BA3 = Mat1_Region + 3 * kInnerPerT;
 		//已晕倒(要不干脆硬编码，更快)
-		const float* TM2BA0 = Mat2_Region + CTXIT;
-		const float* TM2BA1 = Mat2_Region + CTXIT + 1 * kInnerPerT;//16=1*blockDim.x
-		const float* TM2BA2 = Mat2_Region + CTXIT + 2 * kInnerPerT;
-		const float* TM2BA3 = Mat2_Region + CTXIT + 3 * kInnerPerT;
+		const float* TM2BA0 = Mat2_Region_Plus_CTXIT;
+		const float* TM2BA1 = Mat2_Region_Plus_CTXIT + 1 * kInnerPerT;//16=1*blockDim.x
+		const float* TM2BA2 = Mat2_Region_Plus_CTXIT + 2 * kInnerPerT;
+		const float* TM2BA3 = Mat2_Region_Plus_CTXIT + 3 * kInnerPerT;
 #if ABLATION_MODE == 1
 		//【消融·加载模式】只测「加载阶段」：保留真实的全局读取与共享写入，
 		// 但把计算循环替换为极廉价的读取——读全部 4 行 mat1 + 4 列 mat2 的首元素。
@@ -235,10 +242,10 @@ __global__ void Matrix_Double_Mutiple_GPU_Kernel(const float* __restrict d_mat1_
 		for (int in = 0;in < kInnerPerT;in++) {
 			float r0 = TM1BA0[in], r1 = TM1BA1[in], r2 = TM1BA2[in], r3 = TM1BA3[in];
 			float c0 = TM2BA0[in], c1 = TM2BA1[in], c2 = TM2BA2[in], c3 = TM2BA3[in];
-			sum00 += r0 * c0; sum01 += r0 * c1; sum02 += r0 * c2, sum03 += r0 * c3,
-			sum10 += r1 * c0; sum11 += r1 * c1; sum12 += r1 * c2, sum13 += r1 * c3,
-			sum20 += r2 * c0; sum21 += r2 * c1; sum22 += r2 * c2, sum23 += r2 * c3,
-			sum30 += r3 * c0; sum31 += r3 * c1; sum32 += r3 * c2, sum33 += r3 * c3;
+			sum00 += r0 * c0; sum01 += r0 * c1; sum02 += r0 * c2, sum03 += r0 * c3; 
+			sum10 += r1 * c0; sum11 += r1 * c1; sum12 += r1 * c2, sum13 += r1 * c3;
+			sum20 += r2 * c0; sum21 += r2 * c1; sum22 += r2 * c2, sum23 += r2 * c3; 
+			sum30 += r3 * c0; sum31 += r3 * c1; sum32 += r3 * c2, sum33 += r3 * c3; 
 		}
 #endif
 		__syncthreads();//再次阻滞，保证每个格子都计算完成再开始下一步
@@ -292,7 +299,7 @@ Matrix_Double Matrix_Double_Mutiple_GPU(const Matrix_Double& mat1, const Matrix_
 	DoubleToFloat_Kernel << <gridmat2, 1024 >> > (d_mat2, d_mat2_f, mat2.data.size());
 
 	cudaEventRecord(e1);
-	int gridy = (rows + kTileCols - 1) / (kTileCols);//表示，新得到的矩阵的block有几行
+	int gridy = (rows + kTileRows - 1) / (kTileRows);//表示，新得到的矩阵的block有几行
 	int gridx = (cols + kTileCols - 1) / (kTileCols);//表示，新得到的矩阵的block有几列
 	Matrix_Double_Mutiple_GPU_Kernel << <dim3(gridx, gridy, 1), dim3(kBlockSize, kBlockSize, 1), Shared_Memory_Size >> > (d_mat1_f, d_mat2_f, d_out, rows, inner, cols);
 	cudaEventRecord(e2);
@@ -319,11 +326,11 @@ Matrix_Double Matrix_Double_Mutiple_GPU(const Matrix_Double& mat1, const Matrix_
 /// <exception cref="std::runtime_error">mat1 的列数不等于 mat2 的行数，或任一输入为空矩阵时抛出</exception>
 void Matrix_Double_Mutiple_GPU(const Matrix_Double& mat1, const Matrix_Double& mat2, Matrix_Double& out) {
 	const int rows = mat1.rowNum_, inner = mat1.colNum_, cols = mat2.colNum_;
-	if (inner != mat2.rowNum_) {throw std::runtime_error("mismatched Matrix");}
-	if (mat1.data.size() == 0 || mat2.data.size() == 0) {throw std::runtime_error("empty matrix");}
+	if (inner != mat2.rowNum_) { throw std::runtime_error("mismatched Matrix"); }
+	if (mat1.data.size() == 0 || mat2.data.size() == 0) { throw std::runtime_error("empty matrix"); }
 	//结果缓冲复用：仅当尺寸变化时才重新分配；稳态下 resize 是 no-op，既不分配也不清零
 	const size_t need = (size_t)rows * cols;
-	if (out.data.size() != need) {out.data.resize(need);}
+	if (out.data.size() != need) { out.data.resize(need); }
 	out.rowNum_ = rows;
 	out.colNum_ = cols;
 
@@ -339,25 +346,26 @@ void Matrix_Double_Mutiple_GPU(const Matrix_Double& mat1, const Matrix_Double& m
 	cudaEventCreate(&e2); cudaEventCreate(&e3);
 
 	//显存常驻缓冲：容量不足时才重新分配（避免每轮 cudaMalloc/cudaFree）
-	if (mat1Size > cap1) {if (d_mat1) {	cudaFree(d_mat1);}CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_mat1), mat1Size));cap1 = mat1Size;}
-	if (mat2Size > cap2) {if (d_mat2) {cudaFree(d_mat2);}CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_mat2), mat2Size));cap2 = mat2Size;}
-	if (newDataSize > capO) {if (d_out) {cudaFree(d_out);}CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_out), newDataSize));capO = newDataSize;}
-	if (mat1Sizef > cap1f) {if (d_mat1_f) {	cudaFree(d_mat1_f);}CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_mat1_f), mat1Sizef));cap1f = mat1Sizef;}
-	if (mat2Sizef > cap2f) {if (d_mat2_f) {cudaFree(d_mat2_f);}CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_mat2_f), mat2Sizef));cap2f = mat2Sizef;}
+	if (mat1Size > cap1) { if (d_mat1) { cudaFree(d_mat1); }CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_mat1), mat1Size));cap1 = mat1Size; }
+	if (mat2Size > cap2) { if (d_mat2) { cudaFree(d_mat2); }CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_mat2), mat2Size));cap2 = mat2Size; }
+	if (newDataSize > capO) { if (d_out) { cudaFree(d_out); }CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_out), newDataSize));capO = newDataSize; }
+	if (mat1Sizef > cap1f) { if (d_mat1_f) { cudaFree(d_mat1_f); }CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_mat1_f), mat1Sizef));cap1f = mat1Sizef; }
+	if (mat2Sizef > cap2f) { if (d_mat2_f) { cudaFree(d_mat2_f); }CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_mat2_f), mat2Sizef));cap2f = mat2Sizef; }
 	cudaEventRecord(e0);
 	CUDA_CHECK(cudaMemcpy(d_mat1, mat1.data.data(), mat1Size, cudaMemcpyHostToDevice));
 	CUDA_CHECK(cudaMemcpy(d_mat2, mat2.data.data(), mat2Size, cudaMemcpyHostToDevice));
-	int gridmat1 = (mat1.data.size()+1023) / 1024;
-	int gridmat2 = (mat2.data.size()+1023) / 1024;
+	int gridmat1 = (mat1.data.size() + 1023) / 1024;
+	int gridmat2 = (mat2.data.size() + 1023) / 1024;
 	DoubleToFloat_Kernel << <gridmat1, 1024 >> > (d_mat1, d_mat1_f, mat1.data.size());
-	DoubleToFloat_Kernel << <gridmat2, 1024 >> >(d_mat2, d_mat2_f, mat2.data.size());
+	DoubleToFloat_Kernel << <gridmat2, 1024 >> > (d_mat2, d_mat2_f, mat2.data.size());
 
 	cudaEventRecord(e1);
-	const int gridy = (rows + kTileCols - 1) / (kTileCols);//表示，新得到的矩阵的block有几行
+	const int gridy = (rows + kTileRows - 1) / (kTileRows);//表示，新得到的矩阵的block有几行
 	const int gridx = (cols + kTileCols - 1) / (kTileCols);//表示，新得到的矩阵的block有几列
 	Matrix_Double_Mutiple_GPU_Kernel << <dim3(gridx, gridy, 1), dim3(kBlockSize, kBlockSize, 1), Shared_Memory_Size >> > (d_mat1_f, d_mat2_f, d_out, rows, inner, cols);
 	//诊断打印：只在第一次调用时执行，避免每轮 I/O 污染计时
-	
+
+	cudaEventRecord(e2);
 	static bool printed = false;
 	if (!printed) {
 		printed = true;
@@ -373,8 +381,7 @@ void Matrix_Double_Mutiple_GPU(const Matrix_Double& mat1, const Matrix_Double& m
 			<< "  blocks/SM=" << blocksPerSM
 			<< "  threads/SM=" << blocksPerSM * kBlockSize * kBlockSize << std::endl;
 	}
-	
-	cudaEventRecord(e2);
+
 	CUDA_CHECK(cudaGetLastError());//调试，看有没有错误信息
 
 	//★ 关键：直接拷回 out 的内部数组 —— 零分配、零清零、零额外拷贝

@@ -24,7 +24,7 @@ int main() {
 
 	std::cout << "threads = " << omp_get_max_threads() << std::endl;
 	// 【临时自检】把新的 im2col 卷积实现与朴素实现逐元素对拍，确认数值一致
-
+	/*
 	SelfTest_GetConvolutionMatrixMul();
 
 	std::vector<int>kers1 = {9,5,5};
@@ -128,6 +128,7 @@ int main() {
 		Window.ProcessEvent();
 		Window.Render();
 	}
+	*/
 	std::vector<double> mat1_data = {
 		1,2,3,
 		4,5,6,
@@ -138,11 +139,11 @@ int main() {
 		4,5,6,
 		7,8,9
 	};
-	const int N = 10;
+	const int N = 100;
 	const int Mat_Size = 4096;
 	const int Mat_Size2 = 2047;
 	const int row = 4093;
-	const int col = 3;
+	const int col = 672;
 	Matrix_Double mat1(Mat_Size);
 	mat1.Random(0, 500);
 	Matrix_Double mat2(Mat_Size);
@@ -156,8 +157,8 @@ int main() {
 	}
 	auto end = std::chrono::steady_clock::now();
 	auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - stard);
-	std::cout<<"ave:" << ms / N << std::endl;
+	std::cout<<"ave:" << ms/N  << std::endl;
 	Matrix_Double_Mutiple_GPU(mat1, mat2, r);
-	Matrix_Double tmp = mat1 * mat2;
-	std::cout << tmp.GetData(row, col) << "," << r.GetData(row, col);
+	//Matrix_Double tmp = mat1 * mat2;
+	//std::cout << tmp.GetData(row, col) << "," << r.GetData(row, col);
 }
