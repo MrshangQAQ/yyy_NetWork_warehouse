@@ -161,7 +161,7 @@ $env:NN_EPOCHS="2"; $env:NN_ITERS="10"; $env:NN_BATCH="2000"
   加入自适应调度与训练基准。
 
 诚实的教训：**前期没有用版本控制**，10-07 才建立 git 仓库，之前的演进只能靠记忆补记录；
-本仓库的 `docs/worklog/`、`BASELINE.md`、标签 `v1.0-baseline` / `v1.1-dev` 都是后来补的"证据链"。
+本仓库的 `docs/worklog/`、`BASELINE.md`、标签 `v1.0-baseline` / `v1.1` 都是后来补的"证据链"。
 现在的规则是：每次性能改动必须带前后数据，失败实验也要记。
 
 ## 路线图
@@ -178,6 +178,7 @@ $env:NN_EPOCHS="2"; $env:NN_ITERS="10"; $env:NN_BATCH="2000"
 | 文档 | 内容 |
 |---|---|
 | [BASELINE.md](BASELINE.md) | v1.0 GPU GEMM 基线（4×4 分块）与瓶颈分析 |
+| [CHANGELOG.md](CHANGELOG.md) | 版本更新记录与版本约定 |
 | [docs/V2_PLAN.md](docs/V2_PLAN.md) | v2 设备常驻计划、验收指标、里程碑 |
 | [docs/PITFALLS.md](docs/PITFALLS.md) | 踩坑记录（构建、索引、LDS、共享内存越界、数据集身份等） |
 | [docs/worklog/](docs/worklog/) | 开发日志（目标 / 假设 / 数据 / 结论） |
