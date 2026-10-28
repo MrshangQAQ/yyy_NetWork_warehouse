@@ -247,11 +247,15 @@ struct MatrixView_Complex {
 	MatrixView_Complex DownRight() { return MatrixView_Complex(first, RowBegin + RowLen / 2, RowLen - RowLen / 2, ColBegin + ColLen / 2, ColLen - ColLen / 2, ColNum_); }
 	Complex VisData(int row, int col) const { return first[(row+RowBegin)*ColNum_+col+ColBegin];}
 };
-
+///注：此为非公用API，调用时需谨慎，可能发生未定义行为
+namespace Internal {
+	struct Matrix_Double_Access;
+}
 //在这底下写，Matrix_Double类的实现
 /// <summary>双精度矩阵类：元素为 double，按行主序存放在一维数组中（下标 = row * colNum_ + col）。
 /// 主要用于数值计算场景（如神经网络训练）；需要精确计算时请使用 Matrix_Complex。</summary>
 class Matrix_Double {
+	friend struct Internal::Matrix_Double_Access;
 protected:
 	int rowNum_;//行数
 	int colNum_;//列数
@@ -435,3 +439,15 @@ Matrix_Complex GetComplexMatrix(const Matrix_Lambda& mat, Complex val);
 Matrix_Double Matrix_Double_Mutiple_GPU(const Matrix_Double& mat1, const Matrix_Double& mat2);
 /// <summary>把 mat1×mat2 的结果写入调用方提供的 out（尺寸须已匹配），避免每次重新分配结果缓冲。</summary>
 void Matrix_Double_Mutiple_GPU(const Matrix_Double& mat1, const Matrix_Double& mat2, Matrix_Double& out);
+namespace Internal {
+	struct Matrix_Double_Access
+	{
+		static std::vector<double>& GetInterData(Matrix_Double& A) { return A.data; }
+	};
+}
+
+/// <summary>自适应矩阵乘法：把 mat1×mat2 的结果写入 out；乘加数低于阈值走 CPU，否则走 GPU。</summary>
+void Matrix_Double_Mutiple_Auto(const Matrix_Double& mat1, const Matrix_Double& mat2, Matrix_Double& out);
+
+/// <summary>设置矩阵乘法的 GPU 启用阈值（macs = rows×inner×cols）：macs ≥ 阈值时走 GPU；传 SIZE_MAX 可全部走 CPU。</summary>
+void SetMatMulGpuThreshold(size_t macs);

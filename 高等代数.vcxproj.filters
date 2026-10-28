@@ -91,6 +91,9 @@
     <CudaCompile Include="Matrix_Double_Mutiple_GPU.cu">
       <Filter>源文件</Filter>
     </CudaCompile>
+    <CudaCompile Include="imcol2_GPU.cu">
+      <Filter>源文件</Filter>
+    </CudaCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include=".gitignore" />

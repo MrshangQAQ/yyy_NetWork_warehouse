@@ -100,7 +100,7 @@ void NeuralNetwork_MULCNN::SetPoll(std::vector<int>polls) {
 }
 std::vector<Matrix_Double> NeuralNetwork_MULCNN::Forward(const std::vector<Matrix_Double>& DataIn) {
 	InputBuffer = Batch_Matrix( DataIn,DataIn.size(),1);
-	Layers_[0].z = GetConvolutionMatrixMul(InputBuffer, Layers_[0].Kers, Layers_[0].p, Layers_[0].s);
+	GetConvolutionMatrixMul_Auto(InputBuffer, Layers_[0].Kers, Layers_[0].z, Layers_[0].p, Layers_[0].s);
 	if (Layers_[0].act == ActivationType::None ||
 		Layers_[0].act == ActivationType::ReLU ||
 		Layers_[0].act == ActivationType::Sigmoid ||
@@ -115,7 +115,7 @@ std::vector<Matrix_Double> NeuralNetwork_MULCNN::Forward(const std::vector<Matri
 		Layers_[0].antipoll_buffer = Layers_[0].a.MaxPoll(Layers_[0].poll);
 	}
 	for (int i = 1;i < Layers_.size();i++) {
-		Layers_[i].z = GetConvolutionMatrixMul(Layers_[i - 1].a, Layers_[i].Kers, Layers_[i].p, Layers_[i].s);
+		GetConvolutionMatrixMul_Auto(Layers_[i - 1].a, Layers_[i].Kers, Layers_[i].z, Layers_[i].p, Layers_[i].s);
 		if (Layers_[i].act == ActivationType::None || 
 			Layers_[i].act == ActivationType::ReLU || 
 			Layers_[i].act == ActivationType::Sigmoid || 
@@ -149,9 +149,10 @@ std::vector<Matrix_Double> NeuralNetwork_MULCNN::Back(double step_Length, const 
 		Batch_Matrix K_Rotato180 = GetBlockTranspose(Layers_[i].Kers);//先转置在内部取反和先内部取反在转置应该没差别
 		K_Rotato180.InterRotato_180();
 		//dA=Con(ZDP,K_Rorato180)
-		dA = GetConvolutionMatrixMul(GetPaddingMatrix(ZD, Layers_[i].Kers.GetInternalData()[0].GetColNum() - 1 - Layers_[i].p), K_Rotato180);
+		GetConvolutionMatrixMul_Auto(GetPaddingMatrix(ZD, Layers_[i].Kers.GetInternalData()[0].GetColNum() - 1 - Layers_[i].p), K_Rotato180, dA);
 		//dK=Con(AP,ZD
-		Batch_Matrix dK = GetConvolutionMatrixMul(GetBlockTranspose(GetPaddingMatrix(Layers_[i - 1].a, Layers_[i].p)), ZD);
+		Batch_Matrix dK;
+		GetConvolutionMatrixMul_Auto(GetBlockTranspose(GetPaddingMatrix(Layers_[i - 1].a, Layers_[i].p)), ZD, dK);
 		if (regular != nullptr) {
 			dK += BackSize* std::exp(lambda) * MapMatrix(Layers_[i].Kers, regular);
 		}
@@ -162,8 +163,9 @@ std::vector<Matrix_Double> NeuralNetwork_MULCNN::Back(double step_Length, const 
 	Batch_Matrix ZD = GetDilateMatrix(dZ, Layers_[0].s);
 	Batch_Matrix K_Rotato180 = GetBlockTranspose(Layers_[0].Kers);
 	K_Rotato180.InterRotato_180();
-	dA = GetConvolutionMatrixMul(GetPaddingMatrix(ZD, Layers_[0].Kers.GetInternalData()[0].GetColNum() - 1 - Layers_[0].p), K_Rotato180);
-	Batch_Matrix dK = GetConvolutionMatrixMul(GetBlockTranspose(GetPaddingMatrix(InputBuffer, Layers_[0].p)), ZD);
+	GetConvolutionMatrixMul_Auto(GetPaddingMatrix(ZD, Layers_[0].Kers.GetInternalData()[0].GetColNum() - 1 - Layers_[0].p), K_Rotato180, dA);
+	Batch_Matrix dK;
+	GetConvolutionMatrixMul_Auto(GetBlockTranspose(GetPaddingMatrix(InputBuffer, Layers_[0].p)), ZD, dK);
 	if (regular != nullptr) {
 		dK += std::exp(lambda) * MapMatrix(Layers_[0].Kers, regular);
 	}

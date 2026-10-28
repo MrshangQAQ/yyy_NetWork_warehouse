@@ -190,6 +190,7 @@
     <ClCompile Include="Polynomial.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <CudaCompile Include="imcol2_GPU.cu" />
     <CudaCompile Include="Matrix_Double_Mutiple_GPU.cu" />
   </ItemGroup>
   <ItemGroup>

@@ -1,6 +1,11 @@
-#pragma once
+﻿#pragma once
 #include"Matrix.h"
 #include<cmath>
+
+/// GPU 瘦 N 卷积 kernel 支持的输出通道数上限。
+/// 与 imcol2_GPU.cu 中 GemmAccum_ThinN_Kernel 的共享内存数组尺寸保持一致，改一处必须同步改另一处。
+constexpr int kGemmThinNMax = 16;
+
 class Batch_Matrix
 {
 public:
@@ -36,6 +41,7 @@ public:
 	friend Batch_Matrix Hadamard(const Batch_Matrix& mat1, const Batch_Matrix& mat2);
 	friend Batch_Matrix operator*(double db, const Batch_Matrix& bat);
 	friend Batch_Matrix& operator*=(double db, Batch_Matrix& bat);
+	friend void GetConvolutionMatrixMul_GPU(const Batch_Matrix& bat, const Batch_Matrix& ker, Batch_Matrix& out, int padding, int stride);
 };
 Batch_Matrix operator+(const Batch_Matrix& bat1, const Batch_Matrix& bat2);
 Batch_Matrix& operator+=(Batch_Matrix& bat1, const Batch_Matrix& bat2);
@@ -45,6 +51,16 @@ Batch_Matrix operator*(double db, const Batch_Matrix& bat);
 Batch_Matrix& operator*=(double db, Batch_Matrix& bat);
 /// 类似于矩阵乘法的卷积
 Batch_Matrix GetConvolutionMatrixMul(const Batch_Matrix& bat,const Batch_Matrix& ker,int padding=0, int stride=1);
+
+/// GPU 版多管道卷积（实现在 imcol2_GPU.cu）：与 GetConvolutionMatrixMul 数值等价，
+/// 内部把 im2col 展开与矩阵乘都放在显存里完成（FP32 计算、double 存储）。
+/// <param name="bat">输入图网格：行 × 输入通道，每块一张特征图</param>
+/// <param name="ker">核网格：输入通道 × 输出通道，每块 K×K</param>
+/// <param name="padding">四周补零的行列数</param>
+/// <param name="stride">滑窗步长</param>
+/// <returns>输出网格：bat 的行数 × 输出通道</returns>
+/// <exception cref="std::runtime_error">通道数不匹配、核不是方阵，或 C_out 超过 kGemmThinNMax 时抛出</exception>
+void GetConvolutionMatrixMul_GPU(const Batch_Matrix& bat, const Batch_Matrix& ker,Batch_Matrix& out, int padding=0, int stride=1);
 
 /// 块转置：把 (Co×Ci) 的核网格翻成 (Ci×Co)（反向传播要用）
 Batch_Matrix GetBlockTranspose(const Batch_Matrix& bat);
@@ -75,3 +91,16 @@ Batch_Matrix GetDilateMatrix(const Batch_Matrix& bat, int stride);
 /// <returns>块内尺寸还原为池化前尺寸的新 Batch_Matrix，样本/通道网格沿用 dA</returns>
 /// <exception cref="std::runtime_error">pollsize&lt;=0，或上下文数量与批不匹配时抛出</exception>
 Batch_Matrix GetAntiMaxPoll(const Batch_Matrix& dA, int pollsize, const std::vector<AntiPoll_Data>& ctxs);
+
+/// <summary>自适应卷积：按乘加数自动选择 CPU/GPU，结果写入 out；GPU 路径复用 out 的块，避免重复分配。</summary>
+/// <param name="bat">输入图网格：行 × 输入通道</param>
+/// <param name="ker">核网格：输入通道 × 输出通道</param>
+/// <param name="out">输出网格，尺寸不符时会被调整为 R × C_out</param>
+/// <param name="padding">四周补零的行列数</param>
+/// <param name="stride">滑窗步长</param>
+void GetConvolutionMatrixMul_Auto(const Batch_Matrix& bat, const Batch_Matrix& ker, Batch_Matrix& out, int padding = 0, int stride = 1);
+
+/// <summary>设置卷积的 GPU 启用阈值（macs = R×L×(C_in·K²)×C_out）；传 SIZE_MAX 可全部走 CPU。</summary>
+void SetConvGpuThreshold(size_t macs);
+/// <summary>估算 GPU 卷积会开出的总线程数（用于判断这一个形状值不值得上 GPU）。</summary>
+size_t GetConvGpuThreadCount(int R, int C_out, int outRows, int outCols);

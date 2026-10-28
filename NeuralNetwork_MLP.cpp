@@ -1,5 +1,12 @@
 ﻿#include"NeuralNetwork.h"
 
+/// <summary>矩阵乘法：按规模自动选择 CPU/GPU（阈值见 Matrix_Double_Mutiple_Auto）。</summary>
+static Matrix_Double MatMulAuto(const Matrix_Double& A, const Matrix_Double& B) {
+	Matrix_Double out;
+	Matrix_Double_Mutiple_Auto(A, B, out);
+	return out;
+}
+
 
 static Matrix_Double BackPropagation_MLP(const Layer_MLP& layer) {
 	if (layer.act == ActivationType::None) {
@@ -119,7 +126,7 @@ Matrix_Double NeuralNetwork_MLP::Forward(const Matrix_Double& DataIn) {
 	Matrix_Double predict = DataIn;
 	Layers_[0].a = DataIn;
 	for (int i = 1;i < Layers_.size();i++) {
-		Layers_[i].z = AddBias(Layers_[i].W * predict, Layers_[i].b);
+		Layers_[i].z = AddBias(MatMulAuto(Layers_[i].W, predict), Layers_[i].b);
 		Layers_[i].a = Activate(Layers_[i].z, Layers_[i].act);
 		predict = Layers_[i].a;
 	}
@@ -131,10 +138,10 @@ Matrix_Double NeuralNetwork_MLP::Back(double step_Length, const Matrix_Double& L
 		Matrix_Double delta = Hadamard(dA, BackPropagation_MLP(Layers_[i]));
 		double invBatch = 1.0 / (double)delta.GetColNum();
 
-		Matrix_Double dW = invBatch*delta * GetTranslateMatrix(Layers_[i - 1].a);
+		Matrix_Double dW = invBatch * MatMulAuto(delta, GetTranslateMatrix(Layers_[i - 1].a));
 		Matrix_Double db = invBatch*RowSums(delta);
 
-		dA = GetTranslateMatrix(Layers_[i].W) * delta;//dA现在变为，本层希望上一层的输出往哪个方向走
+		dA = MatMulAuto(GetTranslateMatrix(Layers_[i].W), delta);//dA现在变为，本层希望上一层的输出往哪个方向走
 
 		if (regular != nullptr) {
 			dW += std::exp(lambda) * MapMatrix(Layers_[i].W, regular);

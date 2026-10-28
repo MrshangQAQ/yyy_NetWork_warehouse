@@ -1,12 +1,16 @@
 ﻿#include"Matrix.h"
 #include<chrono>
+#include<utility>
 // ===== 消融实验开关（诊断用；正式基准请保持 0）=====
 // 0 = 正常运行
 // 1 = 只测「加载阶段」：计算循环替换为极廉价读取，防止加载被优化掉
 // 2 = 只测「计算阶段」：共享内存用常量填充，完全不读全局内存
 #define ABLATION_MODE 0
+// 分段计时开关：0 = 不打印（训练/正式使用）；1 = 每次调用打印 H2D/内核/D2H 耗时（基准测试）
+#define MATMUL_GPU_TIMING 0
 constexpr int Shared_Memory_Size= 24064;
 //Shared_Memory备选值：
+// 
 // 32256
 // 24064
 // 48640
@@ -26,7 +30,7 @@ constexpr int kTileCols = kBlockSize * kColsPerThr;     // 每个block总共要�
 constexpr int kTileRows = kBlockSize * kRowsPerThr;		//每个block总共要计算多少行
 constexpr int kNThreads = kBlockSize * kBlockSize;     // 一般为256，每个block的总线程数
 
-__global__ void DoubleToFloat_Kernel(const double* __restrict src, float* __restrict dst, int n) {
+static __global__ void DoubleToFloat_Kernel(const double* __restrict src, float* __restrict dst, int n) {
 	int i = blockIdx.x * blockDim.x + threadIdx.x;
 	if (i < n) dst[i] = (float)src[i];   // 合并访存，纯带宽活
 }
@@ -340,10 +344,13 @@ void Matrix_Double_Mutiple_GPU(const Matrix_Double& mat1, const Matrix_Double& m
 	const size_t mat1Sizef = mat1.data.size() * sizeof(float);
 	const size_t mat2Sizef = mat2.data.size() * sizeof(float);
 
-	cudaEvent_t e0, e1, e2, e3;
-	float ms01 = 0.0, ms12 = 0.0, ms23 = 0.0;
-	cudaEventCreate(&e0); cudaEventCreate(&e1);
-	cudaEventCreate(&e2); cudaEventCreate(&e3);
+#if MATMUL_GPU_TIMING
+	static cudaEvent_t e0 = nullptr, e1 = nullptr, e2 = nullptr, e3 = nullptr;
+	if (e0 == nullptr) {
+		CUDA_CHECK(cudaEventCreate(&e0)); CUDA_CHECK(cudaEventCreate(&e1));
+		CUDA_CHECK(cudaEventCreate(&e2)); CUDA_CHECK(cudaEventCreate(&e3));
+	}
+#endif
 
 	//显存常驻缓冲：容量不足时才重新分配（避免每轮 cudaMalloc/cudaFree）
 	if (mat1Size > cap1) { if (d_mat1) { cudaFree(d_mat1); }CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_mat1), mat1Size));cap1 = mat1Size; }
@@ -351,7 +358,9 @@ void Matrix_Double_Mutiple_GPU(const Matrix_Double& mat1, const Matrix_Double& m
 	if (newDataSize > capO) { if (d_out) { cudaFree(d_out); }CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_out), newDataSize));capO = newDataSize; }
 	if (mat1Sizef > cap1f) { if (d_mat1_f) { cudaFree(d_mat1_f); }CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_mat1_f), mat1Sizef));cap1f = mat1Sizef; }
 	if (mat2Sizef > cap2f) { if (d_mat2_f) { cudaFree(d_mat2_f); }CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_mat2_f), mat2Sizef));cap2f = mat2Sizef; }
+#if MATMUL_GPU_TIMING
 	cudaEventRecord(e0);
+#endif
 	CUDA_CHECK(cudaMemcpy(d_mat1, mat1.data.data(), mat1Size, cudaMemcpyHostToDevice));
 	CUDA_CHECK(cudaMemcpy(d_mat2, mat2.data.data(), mat2Size, cudaMemcpyHostToDevice));
 	int gridmat1 = (mat1.data.size() + 1023) / 1024;
@@ -359,13 +368,17 @@ void Matrix_Double_Mutiple_GPU(const Matrix_Double& mat1, const Matrix_Double& m
 	DoubleToFloat_Kernel << <gridmat1, 1024 >> > (d_mat1, d_mat1_f, mat1.data.size());
 	DoubleToFloat_Kernel << <gridmat2, 1024 >> > (d_mat2, d_mat2_f, mat2.data.size());
 
+#if MATMUL_GPU_TIMING
 	cudaEventRecord(e1);
+#endif
 	const int gridy = (rows + kTileRows - 1) / (kTileRows);//表示，新得到的矩阵的block有几行
 	const int gridx = (cols + kTileCols - 1) / (kTileCols);//表示，新得到的矩阵的block有几列
 	Matrix_Double_Mutiple_GPU_Kernel << <dim3(gridx, gridy, 1), dim3(kBlockSize, kBlockSize, 1), Shared_Memory_Size >> > (d_mat1_f, d_mat2_f, d_out, rows, inner, cols);
 	//诊断打印：只在第一次调用时执行，避免每轮 I/O 污染计时
 
+#if MATMUL_GPU_TIMING
 	cudaEventRecord(e2);
+	// 首次调用打印一次资源配置（寄存器/占用率），便于与基线对比
 	static bool printed = false;
 	if (!printed) {
 		printed = true;
@@ -375,22 +388,42 @@ void Matrix_Double_Mutiple_GPU(const Matrix_Double& mat1, const Matrix_Double& m
 		CUDA_CHECK(cudaOccupancyMaxActiveBlocksPerMultiprocessor(
 			&blocksPerSM, Matrix_Double_Mutiple_GPU_Kernel,
 			kBlockSize * kBlockSize, Shared_Memory_Size));
-		std::cout << "[ABLATION_MODE=" << ABLATION_MODE << "] regs=" << attr.numRegs
-			<< "  shared/block=" << attr.sharedSizeBytes
-			<< "  local=" << attr.localSizeBytes << " B"
-			<< "  blocks/SM=" << blocksPerSM
-			<< "  threads/SM=" << blocksPerSM * kBlockSize * kBlockSize << std::endl;
+		std::cout << "[matmul-GPU cfg] regs=" << attr.numRegs
+			<< " shared/block=" << attr.sharedSizeBytes
+			<< " local=" << attr.localSizeBytes << "B"
+			<< " blocks/SM=" << blocksPerSM
+			<< " threads/SM=" << blocksPerSM * kBlockSize * kBlockSize << std::endl;
 	}
+#endif
 
 	CUDA_CHECK(cudaGetLastError());//调试，看有没有错误信息
 
 	//★ 关键：直接拷回 out 的内部数组 —— 零分配、零清零、零额外拷贝
 	CUDA_CHECK(cudaMemcpy(out.data.data(), d_out, newDataSize, cudaMemcpyDeviceToHost));
+#if MATMUL_GPU_TIMING
 	cudaEventRecord(e3);
 	cudaEventSynchronize(e3);
+	float ms01 = 0.0f, ms12 = 0.0f, ms23 = 0.0f;
+	CUDA_CHECK(cudaEventElapsedTime(&ms01, e0, e1));
+	CUDA_CHECK(cudaEventElapsedTime(&ms12, e1, e2));
+	CUDA_CHECK(cudaEventElapsedTime(&ms23, e2, e3));
+	std::cout << "[matmul-GPU] H2D+convert=" << ms01 << "ms, kernel=" << ms12
+		<< "ms, D2H=" << ms23 << "ms" << std::endl;
+#endif
+}
 
-	cudaEventElapsedTime(&ms01, e0, e1);
-	cudaEventElapsedTime(&ms12, e1, e2);
-	cudaEventElapsedTime(&ms23, e2, e3);
-	std::cout << "[ABLATION_MODE=" << ABLATION_MODE << "] " << ms01 << "ms," << ms12 << "ms," << ms23 << "ms," << std::endl;
+/// <summary>矩阵乘法的 GPU 启用阈值（乘加次数）。默认 3200 万：低于它时搬运开销会盖过计算收益。</summary>
+static size_t gMatMulGpuThreshold = 32u * 1024 * 1024;
+
+void SetMatMulGpuThreshold(size_t macs) { gMatMulGpuThreshold = macs; }
+
+void Matrix_Double_Mutiple_Auto(const Matrix_Double& mat1, const Matrix_Double& mat2, Matrix_Double& out) {
+	const size_t macs = (size_t)mat1.GetRowNum() * (size_t)mat1.GetColNum() * (size_t)mat2.GetColNum();
+	if (macs >= gMatMulGpuThreshold) {
+		Matrix_Double_Mutiple_GPU(mat1, mat2, out);
+		return;
+	}
+	// 小矩阵：CPU 版本（返回临时对象再移动，避免多一次大拷贝）
+	Matrix_Double tmp = mat1 * mat2;
+	out = std::move(tmp);
 }
