@@ -182,6 +182,7 @@ $env:NN_EPOCHS="2"; $env:NN_ITERS="10"; $env:NN_BATCH="2000"
 | [docs/V2_PLAN.md](docs/V2_PLAN.md) | v2 设备常驻计划、验收指标、里程碑 |
 | [docs/PITFALLS.md](docs/PITFALLS.md) | 踩坑记录（构建、索引、LDS、共享内存越界、数据集身份等） |
 | [docs/worklog/](docs/worklog/) | 开发日志（目标 / 假设 / 数据 / 结论） |
+| [docs/maintenance/](docs/maintenance/) | 维护日志（构建、测量工具等基础设施修复，与功能推进分开记） |
 
 ## 关于 AI 辅助
 
