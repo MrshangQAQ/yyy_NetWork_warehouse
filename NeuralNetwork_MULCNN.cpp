@@ -70,6 +70,8 @@ NeuralNetwork_MULCNN::NeuralNetwork_MULCNN(std::vector<int>Layers_ves, std::vect
 		double w_std = std::sqrt(1.0 / fan_in);
 		Layers_[i].Kers.Random(0,w_std);
 	}
+	dK_cache_.resize(size);
+	dA_cache_.resize(size);
 }
 void NeuralNetwork_MULCNN::SetPadding(std::vector<int>paddings) {
 	int size = paddings.size() < Layers_.size() ? paddings.size() : Layers_.size();
@@ -135,42 +137,39 @@ std::vector<Matrix_Double> NeuralNetwork_MULCNN::Forward(const std::vector<Matri
 	return FuseKernelMaps(Layers_.back().a);
 }
 std::vector<Matrix_Double> NeuralNetwork_MULCNN::Back(double step_Length, const std::vector<Matrix_Double>& LossGradient, double lambda, double (*regular)(double)) {
-	Batch_Matrix dA = SplitKernelGrad(LossGradient, outputColNum_Buffer);
 	int BackSize = LossGradient.size();
 	step_Length /= (double)BackSize;
+	dA_cache_.back() = SplitKernelGrad(LossGradient,Layers_.back().a.GetInternalData()[0].GetColNum());
 	for (int i = (int)Layers_.size() - 1;i >= 1;i--) {
-		Batch_Matrix dZ= GetAntiMaxPoll(Hadamard(dA, BackPropagation_MULCNN(Layers_[i])), Layers_[i].poll, Layers_[i].antipoll_buffer);
 		/*
 		Batch_Matrix AP = GetBlockTranspose( GetPaddingMatrix(Layers_[i-1].a, Layers_[i].p));
 		Batch_Matrix ZD = GetDilateMatrix(dZ, Layers_[i].s);
 		Batch_Matrix ZDP = GetPaddingMatrix(ZD, Layers_[i].Kers.GetInternalData()[0].GetColNum()-1-Layers_[i].p);
 		*/
-		Batch_Matrix ZD = GetDilateMatrix(dZ, Layers_[i].s);
+		Batch_Matrix ZD = GetDilateMatrix(
+			GetAntiMaxPoll(Hadamard(dA_cache_[i], BackPropagation_MULCNN(Layers_[i])), Layers_[i].poll, Layers_[i].antipoll_buffer)//dz
+			,Layers_[i].s);
 		Batch_Matrix K_Rotato180 = GetBlockTranspose(Layers_[i].Kers);//先转置在内部取反和先内部取反在转置应该没差别
 		K_Rotato180.InterRotato_180();
 		//dA=Con(ZDP,K_Rorato180)
-		GetConvolutionMatrixMul_Auto(GetPaddingMatrix(ZD, Layers_[i].Kers.GetInternalData()[0].GetColNum() - 1 - Layers_[i].p), K_Rotato180, dA);
+		GetConvolutionMatrixMul_Auto(ZD, K_Rotato180, dA_cache_[i-1], Layers_[i].Kers.GetInternalData()[0].GetColNum() - 1 - Layers_[i].p);
 		//dK=Con(AP,ZD
-		Batch_Matrix dK;
-		GetConvolutionMatrixMul_Auto(GetBlockTranspose(GetPaddingMatrix(Layers_[i - 1].a, Layers_[i].p)), ZD, dK);
+		GetConvolutionMatrixMul_Auto(GetBlockTranspose(Layers_[i - 1].a), ZD, dK_cache_[i], Layers_[i].p);
 		if (regular != nullptr) {
-			dK += BackSize* std::exp(lambda) * MapMatrix(Layers_[i].Kers, regular);
+			dK_cache_[i] += BackSize* std::exp(lambda) * MapMatrix(Layers_[i].Kers, regular);
 		}
-		Layers_[i].Kers-= step_Length*dK;
+		Layers_[i].Kers-= step_Length* dK_cache_[i];
 	}
-
-	Batch_Matrix dZ = GetAntiMaxPoll(Hadamard(dA, BackPropagation_MULCNN(Layers_[0])), Layers_[0].poll, Layers_[0].antipoll_buffer);
-	Batch_Matrix ZD = GetDilateMatrix(dZ, Layers_[0].s);
+	Batch_Matrix ZD = GetDilateMatrix(GetAntiMaxPoll(Hadamard(dA_cache_[0], BackPropagation_MULCNN(Layers_[0])), Layers_[0].poll, Layers_[0].antipoll_buffer), Layers_[0].s);
 	Batch_Matrix K_Rotato180 = GetBlockTranspose(Layers_[0].Kers);
 	K_Rotato180.InterRotato_180();
-	GetConvolutionMatrixMul_Auto(GetPaddingMatrix(ZD, Layers_[0].Kers.GetInternalData()[0].GetColNum() - 1 - Layers_[0].p), K_Rotato180, dA);
-	Batch_Matrix dK;
-	GetConvolutionMatrixMul_Auto(GetBlockTranspose(GetPaddingMatrix(InputBuffer, Layers_[0].p)), ZD, dK);
+	GetConvolutionMatrixMul_Auto(ZD, K_Rotato180, dA_cache_[0], Layers_[0].Kers.GetInternalData()[0].GetColNum() - 1 - Layers_[0].p);
+	GetConvolutionMatrixMul_Auto(GetBlockTranspose(InputBuffer), ZD, dK_cache_[0], Layers_[0].p);
 	if (regular != nullptr) {
-		dK += std::exp(lambda) * MapMatrix(Layers_[0].Kers, regular);
+		dK_cache_[0] += std::exp(lambda) * MapMatrix(Layers_[0].Kers, regular);
 	}
-	Layers_[0].Kers -= step_Length * dK;
-	return  dA.GetInternalData();
+	Layers_[0].Kers -= step_Length * dK_cache_[0];
+	return  dA_cache_[0].GetInternalData();
 }
 File_Handle_Inf NeuralNetwork_MULCNN::Load(std::fstream& file, int beginIn) {
 	file.clear();

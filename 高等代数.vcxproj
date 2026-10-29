@@ -164,6 +164,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="APP_Generate_Function_Graph.h" />
+    <ClInclude Include="Bench.h" />
     <ClInclude Include="APP_MNIST.h" />
     <ClInclude Include="Complex.h" />
     <ClInclude Include="Matrix.h" />
@@ -175,6 +176,7 @@
     <ClCompile Include="APP_Generate_Function_Graph.cpp" />
     <ClCompile Include="APP_MNIST.cpp" />
     <ClCompile Include="Batch_Matrix.cpp" />
+    <ClCompile Include="Bench.cpp" />
     <ClCompile Include="Batch_Matrix.h" />
     <ClCompile Include="Complex.cpp" />
     <ClCompile Include="Complex_NeuralNetwork.cpp" />

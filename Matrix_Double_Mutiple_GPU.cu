@@ -17,7 +17,9 @@
 //   1 = A 路径：主机侧 double→float（AVX2）→ 锁页 → 异步 H2D → float GEMM → 异步 D2H → 主机侧转回 double
 //   0 = 旧路径：pageable 传 double → 设备端转换 → GEMM 输出 double → pageable 拷回
 // 用 MATMUL_GPU_TIMING=1 可以对比两条路径的分段耗时。
-#define MATMUL_TRANSFER_MODE 1
+#define MATMUL_TRANSFER_MODE_DEFAULT 1
+// 运行时开关（SetMatMulTransferMode）：1 = A 路径（锁页 + 主机侧转换）；0 = 旧路径（pageable + 设备端转换）
+static int gMatMulTransferMode = MATMUL_TRANSFER_MODE_DEFAULT;
 constexpr int Shared_Memory_Size= 24064;
 //Shared_Memory备选值：
 // 
@@ -120,27 +122,10 @@ __global__ void Matrix_Double_Mutiple_GPU_Kernel(const float* __restrict d_mat1_
 	bool IC2A = ColOut + 2 < cols;
 	bool IC3A = ColOut + 3 < cols;
 	//它们写入位置的层基址，由ty决定
-	//这里我们把这个RTYIT放到Mat1_Region中,原来为
-	//Mat1_Region = Mat_Region
-	//float* Mat1_Region_Base_Address0 = Mat1_Region + RTYIT;
-	//float* Mat1_Region_Base_Address1 = Mat1_Region + RTYIT + inner_per_times;
-	//float* Mat1_Region_Base_Address2 = Mat1_Region + RTYIT + 2 * inner_per_times;
-	//float* Mat1_Region_Base_Address3 = Mat1_Region + RTYIT + 3 * inner_per_times;
 	float* Mat1_Region_Base_Address0 = Mat1_Region;
 	float* Mat1_Region_Base_Address1 = Mat1_Region + kInnerPerT;
 	float* Mat1_Region_Base_Address2 = Mat1_Region + 2 * kInnerPerT;
 	float* Mat1_Region_Base_Address3 = Mat1_Region + 3 * kInnerPerT;
-
-	//按ty选取，它们读取位置时的层基址，（一个线程管4行，古分别有4个），我们这里统一ty，因为后面的读取都是ty不变，tx做偏置的
-	//const double* Ty_Mat1_Base_Address0 = Mat1_Base_Address + (0 + ty * row_per_threads) * inner;
-	//const double* Ty_Mat1_Base_Address1 = Mat1_Base_Address + (1 + ty * row_per_threads) * inner;
-	//const double* Ty_Mat1_Base_Address2 = Mat1_Base_Address + (2 + ty * row_per_threads) * inner;
-	//const double* Ty_Mat1_Base_Address3 = Mat1_Base_Address + (3 + ty * row_per_threads) * inner;
-
-	//const double* Ty_Mat2_Base_Address0 = Mat2_Base_Address + 0 + ty * col_per_threads;
-	//const double* Ty_Mat2_Base_Address1 = Mat2_Base_Address + 1 + ty * col_per_threads;
-	//const double* Ty_Mat2_Base_Address2 = Mat2_Base_Address + 2 + ty * col_per_threads;
-	//const double* Ty_Mat2_Base_Address3 = Mat2_Base_Address + 3 + ty * col_per_threads;
 	//辅助写入的值，它们用于检查，这个写入的外维是否越界，不检查最后会把值放在什么位置
 	//int RowIdx = (blockIdx.y * blockDim.y + ty) * row_per_threads;   
 	//int ColIdx = (blockIdx.x * blockDim.x + ty) * col_per_threads;   // blockIdx.x * blockDim.x，同理，表示的是读取B时的基础地址，+ty（因为是按每ty为分配1层进行填充的），表示该线程，实际上读入的是B的哪一列
@@ -150,28 +135,13 @@ __global__ void Matrix_Double_Mutiple_GPU_Kernel(const float* __restrict d_mat1_
 	bool IsAccessRowIdx1 = (RowIdx0 + 1) < rows;
 	bool IsAccessRowIdx2 = (RowIdx0 + 2) < rows;
 	bool IsAccessRowIdx3 = (RowIdx0 + 3) < rows;
-	//Col的版本现已弃用
-	//int ColIdx0 = (blockIdx.x * kBlockSize + ty) * kColsPerThr;   // blockIdx.x * blockDim.x * col_per_threads，同理，表示的是读取B时的基础地址，+ty（因为是按每ty为分配1层进行填充的），表示该线程，实际上读入的是B的哪一列
-	//bool IsAccessColIdx0 = (ColIdx0) < cols;
-	//bool IsAccessColIdx1 = (ColIdx0 + 1) < cols;
-	//bool IsAccessColIdx2 = (ColIdx0 + 2) < cols;
-	//bool IsAccessColIdx3 = (ColIdx0 + 3) < cols;
-	//bool IsAccessColIdx4 = (ColIdx0 + 4) < cols;
-	//bool IsAccessColIdx5 = (ColIdx0 + 5) < cols;
-	//bool IsAccessColIdx6 = (ColIdx0 + 6) < cols;
-	//bool IsAccessColIdx7 = (ColIdx0 + 7) < cols;
-	
+
 	//计算列所需要的一些常量
 	//外层循环，逐步计算出sum
 	for (int k = 0;k < K;k++) {
 		//k*inner_per_times，决定它们读那一段
 		int in_base = k * kInnerPerT;
 		//这次读取的基础地址，层基址把它们按层区分开,in_base决定它们读取哪一段
-		// Mat1_Base_Address
-		//const float* TyK_Mat1_Base_Address0 = Mat1_Base_Address + RTYI + in_base;
-		//const float* TyK_Mat1_Base_Address1 = Mat1_Base_Address + RTYI + in_base + 1 * inner;
-		//const float* TyK_Mat1_Base_Address2 = Mat1_Base_Address + RTYI + in_base + 2 * inner;
-		//const float* TyK_Mat1_Base_Address3 = Mat1_Base_Address + RTYI + in_base + 3 * inner;
 		//这里，我们把RTYI移动到外部第一次计算Mat1_Base_Address时
 		const float* TyK_Mat1_Base_Address0 = Mat1_Base_Address + in_base;
 		const float* TyK_Mat1_Base_Address1 = Mat1_Base_Address + in_base + 1*inner;
@@ -200,15 +170,7 @@ __global__ void Matrix_Double_Mutiple_GPU_Kernel(const float* __restrict d_mat1_
 		// 写 shared 时的跨度是 inner_per_times（奇数 95，与 bank 数 32 互质）→ bank 天然错开。
 		// shared 布局 [c][k] 与原来完全一致，所以计算阶段无需任何改动。
 		{
-
-			//const int col_base = blockIdx.x * blockDim.x * kColsPerThr;   
-			//const int tid = ty * blockDim.x + tx;
-			//const int nthreads = blockDim.x * blockDim.y;                 
-			//const int tileCols = blockDim.x * kColsPerThr;                
-			//const int col_base = kBlockSize * kTileCols;   // 本 block 的起始全局列号 = bx*64
 			const int tid = ty * kBlockSize + tx;//这是第几个线程，实际上，我们共有kTileCols个列，我们希望这256个线程，每个线程一次填充某行的1列，直到该列被填完，每次填充N*KTileCols个部分，N=kNThreads/kTileCols
-			//const int nthreads = kNThreads;                   // 256
-			//const int tileCols = kTileCols;                // 64
 			for (int idx = tid; idx < kTileCols * kInnerPerT; idx += kNThreads) {
 				const int kIdx = idx / kTileCols;      // 内维方向（慢变），等价于原来的 in，这里应该是0，2，4。。。。
 				const int cIdx = idx % kTileCols;      // 通道方向（快变），0.....127
@@ -238,19 +200,10 @@ __global__ void Matrix_Double_Mutiple_GPU_Kernel(const float* __restrict d_mat1_
 			//}
 		}
 		*/
-		//阻滞，保证共享的部分被完全初始化再开始读，计算矩阵
-		//计算该位置处乘法的结果
-		//TM1BA:The_Mat1_Base_Address，这里进行了强度削减，原来为
-		//Mat1_Region = Mat_Region
-		//const float* TM1BA0 = Mat1_Region + RTYIT;
-		//const float* TM1BA1 = Mat1_Region + RTYIT + 1 * inner_per_times;
-		//const float* TM1BA2 = Mat1_Region + RTYIT + 2 * inner_per_times;
-		//const float* TM1BA3 = Mat1_Region + RTYIT + 3 * inner_per_times;
 		const float* TM1BA0 = Mat1_Region;
 		const float* TM1BA1 = Mat1_Region + 1 * kInnerPerT;
 		const float* TM1BA2 = Mat1_Region + 2 * kInnerPerT;
 		const float* TM1BA3 = Mat1_Region + 3 * kInnerPerT;
-		//已晕倒(要不干脆硬编码，更快)
 		const float* TM2BA0 = Mat2_Region_Plus_CTXIT;
 		const float* TM2BA1 = Mat2_Region_Plus_CTXIT + 1 * kInnerPerT;//16=1*blockDim.x
 		const float* TM2BA2 = Mat2_Region_Plus_CTXIT + 2 * kInnerPerT;
@@ -349,7 +302,6 @@ Matrix_Double Matrix_Double_Mutiple_GPU(const Matrix_Double& mat1, const Matrix_
 /// <param name="out">结果输出矩阵；尺寸不符时自动调整为 M×N</param>
 /// <exception cref="std::runtime_error">mat1 的列数不等于 mat2 的行数，或任一输入为空矩阵时抛出</exception>
 // ===================== A 路径辅助：锁页/显存缓冲 + 主机侧类型转换 =====================
-#if MATMUL_TRANSFER_MODE == 1
 namespace {
 	/// <summary>只增不减的锁页缓冲（容量单位：float 个数）。首次分配后写一遍，避免首帧 page fault 进入计时区。</summary>
 	float* EnsurePinnedFloats(float*& ptr, size_t& cap, size_t needElems) {
@@ -409,7 +361,6 @@ namespace {
 #endif
 	}
 } // namespace
-#endif // MATMUL_TRANSFER_MODE == 1
 
 /// <summary>三参数版本：把 mat1×mat2 的结果直接写入调用方提供的 out。
 /// 结果缓冲由调用方持有并复用；传输路径由 MATMUL_TRANSFER_MODE 决定（1 = 锁页 + 主机侧转换，0 = 旧路径）。</summary>
@@ -441,7 +392,7 @@ void Matrix_Double_Mutiple_GPU(const Matrix_Double& mat1, const Matrix_Double& m
 	}
 #endif
 
-#if MATMUL_TRANSFER_MODE == 1
+	if (gMatMulTransferMode == 1) {
 	// ---------- A 路径：主机侧转 float → 锁页 → 异步 H2D → float GEMM → 异步 D2H → 主机侧转回 double ----------
 	float* h1 = EnsurePinnedFloats(h_pin_mat1, capPin1, m1n);
 	float* h2 = EnsurePinnedFloats(h_pin_mat2, capPin2, m2n);
@@ -509,7 +460,7 @@ void Matrix_Double_Mutiple_GPU(const Matrix_Double& mat1, const Matrix_Double& m
 		<< "ms, kernel=" << msKernel << "ms, D2H=" << msD2H
 		<< "ms, unpack=" << msUnpack << "ms, total=" << msTotal << "ms" << std::endl;
 #endif
-#else
+	} else {
 	// ---------- 旧路径：pageable 传 double → 设备端转换 → GEMM 输出 double → pageable 拷回 ----------
 	const size_t newDataSize = need * sizeof(double);
 	const size_t mat1Size = mat1.data.size() * sizeof(double);
@@ -551,17 +502,22 @@ void Matrix_Double_Mutiple_GPU(const Matrix_Double& mat1, const Matrix_Double& m
 #else
 	CUDA_CHECK(cudaStreamSynchronize(0));
 #endif
-#endif // MATMUL_TRANSFER_MODE
+}
 }
 
 /// <summary>矩阵乘法的 GPU 启用阈值（乘加次数）。默认 3200 万：低于它时搬运开销会盖过计算收益。</summary>
-static size_t gMatMulGpuThreshold = 32u * 1024 * 1024;
+static size_t gMatMulGpuThreshold = 2u * 1024 * 1024;   // 200 万 MAC：低于它 GPU 固定开销占主导（扫描数据见 run_bench.ps1）
 
 void SetMatMulGpuThreshold(size_t macs) { gMatMulGpuThreshold = macs; }
 
+void SetMatMulTransferMode(int mode) { gMatMulTransferMode = (mode == 0) ? 0 : 1; }
+
 void Matrix_Double_Mutiple_Auto(const Matrix_Double& mat1, const Matrix_Double& mat2, Matrix_Double& out) {
 	const size_t macs = (size_t)mat1.GetRowNum() * (size_t)mat1.GetColNum() * (size_t)mat2.GetColNum();
-	if (macs >= gMatMulGpuThreshold) {
+	// 形状判据：瘦长/很小规模的乘法在 GPU 上会被固定开销吃掉（数据见 bench：128x10x2000 这类 CPU 更快）
+	const int rows = mat1.GetRowNum(), inner = mat1.GetColNum(), cols = mat2.GetColNum();
+	const int minDim = (rows < cols) ? rows : cols;
+	if (macs >= gMatMulGpuThreshold && minDim >= 32 && inner >= 64) {
 		Matrix_Double_Mutiple_GPU(mat1, mat2, out);
 		return;
 	}

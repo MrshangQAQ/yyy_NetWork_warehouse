@@ -26,7 +26,6 @@
 #define CONV_GPU_TIMING 0
 
 namespace Bat_Convolution_Gpu{
-
 /// 常驻显存缓冲（跨调用复用）。刻意用裸指针而不做析构：
 /// 与项目既有做法一致，避免静态对象析构发生在 CUDA 上下文销毁之后。
 	float* d_inMat_f = nullptr ; size_t capin = 0;
@@ -53,7 +52,7 @@ namespace BCG = Bat_Convolution_Gpu;
 /// <param name="padding">四周补零的行列数（与 Convolution 同义）(数据中无p，心中有p(悲))</param>
 /// <param name="stride">滑窗步长</param>
 /// 规定，y对应行，x对应列
-__global__ void Convolution_GPU_kernal(const float* data,float* out,int Out_Row,int Out_Col,int Out_inner,int bat_inner_row,int bat_inner_col,int K,int padding,int stride) {
+__global__ void Convolution_GPU_kernal(const float* __restrict data,float* __restrict out,int Out_Row,int Out_Col,int Out_inner,int bat_inner_row,int bat_inner_col,int K,int padding,int stride) {
 	
 	extern __shared__ float Mat_Region[];//存储ker和bat的数据
 	/*往这里添加，进行强度削减需要用到的常数*/
@@ -238,11 +237,23 @@ __global__ void Convolution_GPU_kernal(const float* data,float* out,int Out_Row,
 	}
 }
 //用于辅助写入锁页内存
-static void PackD2F(const double* src, float* dst, size_t n) {
-	for (size_t i = 0; i < n; ++i) dst[i] = (float)src[i];
+static void PackD2F(const double* __restrict src, float* __restrict dst, size_t n) {
+	size_t i = 0;
+	for (; i + 4 <= n; i += 4) {
+		__m256d d = _mm256_loadu_pd(src + i);   // 读 4 个 double
+		__m128  f = _mm256_cvtpd_ps(d);         // 转成 4 个 float
+		_mm_storeu_ps(dst + i, f);              // 写 4 个 float
+	}
+	for (; i < n; ++i) dst[i] = (float)src[i];  // 余数
 }
-static void PackF2D(const float* src, double* dst, size_t n) {
-	for (size_t i = 0; i < n; ++i) dst[i] = (double)src[i];
+static void PackF2D(const float* __restrict src, double* __restrict dst, size_t n) {
+	size_t i = 0;
+	for (; i + 4 <= n; i += 4) {
+		__m128  f = _mm_loadu_ps(src + i);
+		__m256d d = _mm256_cvtps_pd(f);
+		_mm256_storeu_pd(dst + i, d);
+	}
+	for (; i < n; ++i) dst[i] = (double)src[i];
 }
 void GetConvolutionMatrixMul_GPU(const Batch_Matrix& bat, const Batch_Matrix& ker,Batch_Matrix& out, int padding, int stride)
 {
@@ -435,7 +446,7 @@ void GetConvolutionMatrixMul_GPU(const Batch_Matrix& bat, const Batch_Matrix& ke
 		<< " block=(" << blockx << ',' << blocky << ')'
 		<< " shmem=" << Real_Shared_Size << "B"
 		<< " | pack=" << msPack << " H2D=" << msH2D << " kernel=" << msKernel
-		<< " D2H=" << msD2H << " unpack=" << msUnpack
+		<< " D2H=" << msD2H << " unpack=" << msUnpack << std::endl 
 		<< " total=" << msTotal << " ms" << std::endl;
 	std::cout.flags(oldFlags);
 	std::cout.precision(oldPrec);

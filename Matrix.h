@@ -438,6 +438,7 @@ Matrix_Complex GetComplexMatrix(const Matrix_Lambda& mat, Complex val);
 //以下函数在GPU(Matrix_Double_Mutiple_GPU)中实现
 Matrix_Double Matrix_Double_Mutiple_GPU(const Matrix_Double& mat1, const Matrix_Double& mat2);
 /// <summary>把 mat1×mat2 的结果写入调用方提供的 out（尺寸须已匹配），避免每次重新分配结果缓冲。</summary>
+
 void Matrix_Double_Mutiple_GPU(const Matrix_Double& mat1, const Matrix_Double& mat2, Matrix_Double& out);
 namespace Internal {
 	struct Matrix_Double_Access
@@ -451,3 +452,6 @@ void Matrix_Double_Mutiple_Auto(const Matrix_Double& mat1, const Matrix_Double& 
 
 /// <summary>设置矩阵乘法的 GPU 启用阈值（macs = rows×inner×cols）：macs ≥ 阈值时走 GPU；传 SIZE_MAX 可全部走 CPU。</summary>
 void SetMatMulGpuThreshold(size_t macs);
+
+/// <summary>选择矩阵乘 GPU 的传输路径：1 = 锁页 + 主机侧 float 转换（A 路径）；0 = pageable double + 设备端转换（旧路径）。</summary>
+void SetMatMulTransferMode(int mode);

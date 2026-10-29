@@ -224,9 +224,9 @@ private:
     std::vector<Layer_MULCNN> Layers_;
     Batch_Matrix InputBuffer;//输入缓冲区用于存储输入
     int outputColNum_Buffer = 1;
+    std::vector<Batch_Matrix> dK_cache_ ;//dA缓冲区，避免每次重新分配,每层一个
+    std::vector<Batch_Matrix> dA_cache_ ;//dK缓冲区，避免每次重新分配，每层一个
 };
-
-
 
 class Complex_NeuralNetwork {
 public:
