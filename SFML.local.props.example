@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  SFML 路径覆盖模板（可选）。
+  默认情况下，工程会在仓库内 third_party\SFML-3.1.0 查找 SFML 3.1.0；
+  如果你把 SFML 放在别处，可以：
+    1) 复制本文件为 SFML.local.props（该文件已被 .gitignore 排除），修改下面的路径；或
+    2) 设置环境变量 SFML_DIR，exe 构建时同样生效（在 XML 里写 $(SFML_DIR)）。
+-->
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <!-- 改成你自己的 SFML 3.1.0 解压目录 -->
+    <SFMLDir>C:\path\to\SFML-3.1.0</SFMLDir>
+  </PropertyGroup>
+</Project>

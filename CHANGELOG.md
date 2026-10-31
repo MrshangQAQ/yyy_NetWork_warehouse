@@ -10,6 +10,12 @@
 - **v1.2（计划）**：pack/unpack 改 AVX2 + 锁页/异步传输 → 目标：卷积边界成本减半（约 130 ms → 60~80 ms/批），epoch ≤ 9.5 s。
 - **v2.0（计划）**：设备常驻 CNN 执行模型（`GpuTensor` + 融合 kernel + 前后向全程显存），目标 epoch ≤ 4 s。详见 [docs/V2_PLAN.md](docs/V2_PLAN.md)。
 
+## 未发布的工程改动（演示/可移植性）
+
+- 完整工程 SFML 路径改为可配置：默认 `third_party/SFML-3.1.0`，可用 `SFML.local.props`（不入库）或环境变量 `SFML_DIR` 覆盖；
+- `Demo_CPU` 输出末尾增加最终准确率/总耗时总结；
+- `Bench` 在没有 CUDA 设备的机器上自动只测 CPU（GPU 模式跳过），无需改代码；
+
 ## v1.1（2026-10-28）
 
 - **CPU 卷积**：im2col + 4×8 寄存器分块 + 分块展开，与朴素实现做逐元素对拍（相对误差 ~1e-7）。

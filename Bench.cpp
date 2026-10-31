@@ -2,6 +2,9 @@
 #include "Bench.h"
 #include "Matrix.h"
 #include "Batch_Matrix.h"
+#if !defined(CPU_ONLY)
+#include <cuda_runtime.h>
+#endif
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -57,6 +60,29 @@ namespace {
 	// 防止编译器把"结果没被使用"的调用优化掉
 	volatile double gSink = 0.0;
 
+	// 是否真的有可用的 CUDA 设备（无 GPU / 驱动不匹配 / 被环境变量强制关闭时返回 false）
+	bool HasCudaDevice() {
+#if defined(CPU_ONLY)
+		return false;
+#else
+		if (std::getenv("NN_BENCH_NO_GPU") != nullptr) return false;
+		int count = 0;
+		if (cudaGetDeviceCount(&count) != cudaSuccess || count <= 0) return false;
+		return true;
+#endif
+	}
+
+	// 去掉当前机器跑不了的 GPU 模式
+	void FilterCudaModes(std::vector<std::string>& modes) {
+		if (HasCudaDevice()) return;
+		const bool wasGpu = std::find(modes.begin(), modes.end(), "gpu") != modes.end()
+			|| std::find(modes.begin(), modes.end(), "a") != modes.end()
+			|| std::find(modes.begin(), modes.end(), "legacy") != modes.end();
+		modes.erase(std::remove_if(modes.begin(), modes.end(), [](const std::string& m) {
+			return m == "gpu" || m == "a" || m == "legacy";
+			}), modes.end());
+		if (wasGpu) std::cout << "[bench] no usable CUDA device: testing CPU only (GPU modes skipped)" << std::endl;
+	}
 	std::vector<std::string> SplitModes(const char* text, std::vector<std::string> def) {
 		if (text == nullptr) return def;
 		std::vector<std::string> out;
@@ -93,7 +119,8 @@ namespace {
 		}
 		const int iters = EnvInt("NN_BENCH_ITERS", 20);
 		const int warmup = EnvInt("NN_BENCH_WARMUP", 5);
-		const std::vector<std::string> modes = SplitModes(std::getenv("NN_BENCH_MODES"), { "cpu", "legacy", "a" });
+		std::vector<std::string> modes = SplitModes(std::getenv("NN_BENCH_MODES"), { "cpu", "legacy", "a" });
+		FilterCudaModes(modes);
 
 		Matrix_Double mat1(M, K), mat2(K, N);
 		mat1.Random(0.0, 1.0);
@@ -145,7 +172,8 @@ namespace {
 		};
 		const int iters = EnvInt("NN_BENCH_ITERS", 6);
 		const int warmup = EnvInt("NN_BENCH_WARMUP", 2);
-		const std::vector<std::string> modes = SplitModes(std::getenv("NN_BENCH_MODES"), { "cpu", "gpu" });
+		std::vector<std::string> modes = SplitModes(std::getenv("NN_BENCH_MODES"), { "cpu", "gpu" });
+		FilterCudaModes(modes);
 
 		for (const auto& sh : shapes) {
 			Batch_Matrix bat(sh.R, sh.Cin, sh.H, sh.W);

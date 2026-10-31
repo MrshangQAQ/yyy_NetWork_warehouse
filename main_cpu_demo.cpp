@@ -117,7 +117,7 @@ namespace {
 	}
 
 	// ============================== 2. MLP ==============================
-	void DemoMLP() {
+	double DemoMLP() {
 		std::cout << "===== 2. MLP（从零实现，合成 XOR 数据）=====" << std::endl;
 
 		const int N = 800, F = 2, C = 2;
@@ -139,6 +139,7 @@ namespace {
 			std::vector<ActivationType>{ ActivationType::None, ActivationType::ReLU, ActivationType::None });
 		Complex_NeuralNetwork net({ mlp });
 
+		double lastAcc = 0.0;
 		const int batch = 100, itersPerEpoch = 10, epochs = 15;
 		std::mt19937 idxGen(7);
 		std::uniform_int_distribution<int> dist(0, N - 1);
@@ -157,14 +158,17 @@ namespace {
 			lr *= 0.95;
 			const auto t1 = Clock::now();
 			const double acc = EvalAccuracy(net, Feature, Result, C, F, 1);
+			lastAcc = acc;
 			std::cout << "  epoch " << (ep + 1) << "  训练耗时 " << (long long)Ms(t1 - t0)
 				<< " ms  准确率 " << acc << std::endl;
 		}
 		std::cout << std::endl;
+		return lastAcc;
 	}
 
+
 	// ============================== 3. CNN ==============================
-	void DemoCNN() {
+	double DemoCNN() {
 		std::cout << "===== 3. CNN（从零实现，合成 8x8 条形图分类）=====" << std::endl;
 
 		const int H = 8, W = 8, N = 600, C = 2;
@@ -206,6 +210,7 @@ namespace {
 			std::vector<ActivationType>{ ActivationType::None, ActivationType::ReLU, ActivationType::None });
 		Complex_NeuralNetwork net({ cnn, mlp });
 
+		double lastAcc = 0.0;
 		const int batch = 100, itersPerEpoch = 8, epochs = 12;
 		std::mt19937 idxGen(11);
 		std::uniform_int_distribution<int> dist(0, N - 1);
@@ -224,10 +229,12 @@ namespace {
 			lr *= 0.95;
 			const auto t1 = Clock::now();
 			const double acc = EvalAccuracy(net, Feature, Result, C, H, W);
+			lastAcc = acc;
 			std::cout << "  epoch " << (ep + 1) << "  训练耗时 " << (long long)Ms(t1 - t0)
 				<< " ms  准确率 " << acc << std::endl;
 		}
 		std::cout << std::endl;
+		return lastAcc;
 	}
 
 } // namespace
@@ -237,11 +244,13 @@ int main() {
 	PrintHeader();
 
 	DemoMath();
-	DemoMLP();
-	DemoCNN();
+	const double mlpAcc = DemoMLP();
+	const double cnnAcc = DemoCNN();
 
 	const auto tAll1 = Clock::now();
 	std::cout << "===== 总计 =====" << std::endl;
+	std::cout << "MLP 最终准确率（合成 XOR）: " << mlpAcc << std::endl;
+	std::cout << "CNN 最终准确率（8x8 条形图，15% 噪声）: " << cnnAcc << std::endl;
 	std::cout << "演示总耗时 " << (long long)Ms(tAll1 - tAll0) << " ms" << std::endl;
 	std::cout << "说明：以上全部为 CPU 实现；完整工程支持 CUDA 加速（见 README）。" << std::endl;
 	return 0;

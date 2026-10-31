@@ -36,3 +36,9 @@ MINST4
 # 给同学发送的 CPU 演示压缩包（本地生成，不入库）
 Demo_CPU_share.zip
 Source_Full.zip
+
+# 本机 SFML 路径覆盖（模板见 SFML.local.props.example）
+SFML.local.props
+
+# 第三方依赖目录（SFML 等，按 README 下载解压到这里）
+third_party/

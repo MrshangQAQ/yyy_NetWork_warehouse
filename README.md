@@ -27,7 +27,9 @@
 
 ## 快速开始
 
-**环境**：Visual Studio 2022+（C++20）、CUDA Toolkit ≥ 12.8（目标 `sm_120`，RTX 50 系）、Release | x64。
+**环境**：Visual Studio 2022+（C++20）、CUDA Toolkit ≥ 12.8（目标 `sm_120`，RTX 50 系）、SFML 3.1.0（仅手写数字画板 Demo）、Release | x64。
+
+**SFML 路径**：工程默认在仓库内 `third_party/SFML-3.1.0` 查找（该目录不入库）。放在别处时，把 `SFML.local.props.example` 复制为 `SFML.local.props` 并改一行路径即可（该文件被 `.gitignore` 排除），或设置环境变量 `SFML_DIR`。
 
 ```powershell
 # 1) 构建（.cu 有改动时必须「重新生成解决方案」，详见 docs/PITFALLS.md）
@@ -41,6 +43,8 @@
 # 3) 训练基准（默认：卷积自动走 GPU，矩阵乘走 CPU）
 cd 高等代数
 .\x64\Release\高等代数.exe
+
+> 没有 NVIDIA 显卡时，`NN_BENCH=matmul/conv/all` 会自动只测 CPU（GPU 模式自动跳过）。
 
 # 4) 对比与调参
 $env:NN_ACCEL="cpu"     # cpu / conv / gpu / matmul
