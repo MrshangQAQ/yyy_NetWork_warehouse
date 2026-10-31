@@ -383,6 +383,8 @@ void Matrix_Double_Mutiple_GPU(const Matrix_Double& mat1, const Matrix_Double& m
 	const int gridy = (rows + kTileRows - 1) / kTileRows;
 	const int gridx = (cols + kTileCols - 1) / kTileCols;
 
+
+
 #if MATMUL_GPU_TIMING
 	using SteadyClock = std::chrono::steady_clock;
 	static cudaEvent_t tm0 = nullptr, tm1 = nullptr, tm2 = nullptr, tm3 = nullptr;
@@ -391,6 +393,8 @@ void Matrix_Double_Mutiple_GPU(const Matrix_Double& mat1, const Matrix_Double& m
 		CUDA_CHECK(cudaEventCreate(&tm2)); CUDA_CHECK(cudaEventCreate(&tm3));
 	}
 #endif
+
+
 
 	if (gMatMulTransferMode == 1) {
 	// ---------- A 路径：主机侧转 float → 锁页 → 异步 H2D → float GEMM → 异步 D2H → 主机侧转回 double ----------
@@ -402,26 +406,49 @@ void Matrix_Double_Mutiple_GPU(const Matrix_Double& mat1, const Matrix_Double& m
 	float* dOut = EnsureDeviceFloats(d_float_out, capFO, need);
 	if (g_stream == nullptr) { CUDA_CHECK(cudaStreamCreate(&g_stream)); }
 
+
+
 #if MATMUL_GPU_TIMING
 	const auto tBegin = SteadyClock::now();
 #endif
+
+
+
 	ConvertDoubleToFloat(mat1.data.data(), h1, m1n);
 	ConvertDoubleToFloat(mat2.data.data(), h2, m2n);
 #if MATMUL_GPU_TIMING
 	const auto tPacked = SteadyClock::now();
 	cudaEventRecord(tm0);
 #endif
+
+
+
 	CUDA_CHECK(cudaMemcpyAsync(d1, h1, m1n * sizeof(float), cudaMemcpyHostToDevice, g_stream));
 	CUDA_CHECK(cudaMemcpyAsync(d2, h2, m2n * sizeof(float), cudaMemcpyHostToDevice, g_stream));
+
+
+
 #if MATMUL_GPU_TIMING
 	cudaEventRecord(tm1);
 #endif
+
+
+
 	Matrix_Double_Mutiple_GPU_Kernel<float><<<dim3(gridx, gridy, 1), dim3(kBlockSize, kBlockSize, 1), Shared_Memory_Size, g_stream>>>(d1, d2, dOut, rows, inner, cols);
 	CUDA_CHECK(cudaGetLastError());
+
+
+
 #if MATMUL_GPU_TIMING
 	cudaEventRecord(tm2);
 #endif
+
+
+
 	CUDA_CHECK(cudaMemcpyAsync(hOut, dOut, need * sizeof(float), cudaMemcpyDeviceToHost, g_stream));
+
+
+
 #if MATMUL_GPU_TIMING
 	cudaEventRecord(tm3);
 	CUDA_CHECK(cudaEventSynchronize(tm3));
@@ -429,7 +456,11 @@ void Matrix_Double_Mutiple_GPU(const Matrix_Double& mat1, const Matrix_Double& m
 #else
 	CUDA_CHECK(cudaStreamSynchronize(g_stream));
 #endif
+
+
 	ConvertFloatToDouble(hOut, out.data.data(), need);
+
+
 
 #if MATMUL_GPU_TIMING
 	const auto tEnd = SteadyClock::now();
@@ -460,7 +491,12 @@ void Matrix_Double_Mutiple_GPU(const Matrix_Double& mat1, const Matrix_Double& m
 		<< "ms, kernel=" << msKernel << "ms, D2H=" << msD2H
 		<< "ms, unpack=" << msUnpack << "ms, total=" << msTotal << "ms" << std::endl;
 #endif
-	} else {
+
+
+
+	} 
+	//上面是新路径代码
+	else {
 	// ---------- 旧路径：pageable 传 double → 设备端转换 → GEMM 输出 double → pageable 拷回 ----------
 	const size_t newDataSize = need * sizeof(double);
 	const size_t mat1Size = mat1.data.size() * sizeof(double);
@@ -472,24 +508,45 @@ void Matrix_Double_Mutiple_GPU(const Matrix_Double& mat1, const Matrix_Double& m
 	if (newDataSize > capO) { if (d_out) { cudaFree(d_out); }CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_out), newDataSize));capO = newDataSize; }
 	if (mat1Sizef > cap1f) { if (d_mat1_f) { cudaFree(d_mat1_f); }CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_mat1_f), mat1Sizef));cap1f = mat1Sizef; }
 	if (mat2Sizef > cap2f) { if (d_mat2_f) { cudaFree(d_mat2_f); }CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&d_mat2_f), mat2Sizef));cap2f = mat2Sizef; }
+
+
+
 #if MATMUL_GPU_TIMING
 	cudaEventRecord(tm0);
 #endif
+
+
+
 	CUDA_CHECK(cudaMemcpy(d_mat1, mat1.data.data(), mat1Size, cudaMemcpyHostToDevice));
 	CUDA_CHECK(cudaMemcpy(d_mat2, mat2.data.data(), mat2Size, cudaMemcpyHostToDevice));
 	const int gridmat1 = (int)((mat1.data.size() + 1023) / 1024);
 	const int gridmat2 = (int)((mat2.data.size() + 1023) / 1024);
 	DoubleToFloat_Kernel << <gridmat1, 1024 >> > (d_mat1, d_mat1_f, (int)mat1.data.size());
 	DoubleToFloat_Kernel << <gridmat2, 1024 >> > (d_mat2, d_mat2_f, (int)mat2.data.size());
+
+
+
 #if MATMUL_GPU_TIMING
 	cudaEventRecord(tm1);
 #endif
+
+
+
 	Matrix_Double_Mutiple_GPU_Kernel<double><<<dim3(gridx, gridy, 1), dim3(kBlockSize, kBlockSize, 1), Shared_Memory_Size>>>(d_mat1_f, d_mat2_f, d_out, rows, inner, cols);
 	CUDA_CHECK(cudaGetLastError());
+
+
+
 #if MATMUL_GPU_TIMING
 	cudaEventRecord(tm2);
 #endif
+
+
+
 	CUDA_CHECK(cudaMemcpy(out.data.data(), d_out, newDataSize, cudaMemcpyDeviceToHost));
+
+
+
 #if MATMUL_GPU_TIMING
 	cudaEventRecord(tm3);
 	CUDA_CHECK(cudaEventSynchronize(tm3));

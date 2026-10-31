@@ -25,20 +25,6 @@
 /// 卷积 GPU 路径的分阶段计时开关：1 = 每次调用打印各阶段耗时；0 = 关闭（零额外开销）。
 #define CONV_GPU_TIMING 0
 
-namespace Bat_Convolution_Gpu{
-/// 常驻显存缓冲（跨调用复用）。刻意用裸指针而不做析构：
-/// 与项目既有做法一致，避免静态对象析构发生在 CUDA 上下文销毁之后。
-	float* d_inMat_f = nullptr ; size_t capin = 0;
-	float* d_outMat_f = nullptr ; size_t capout = 0;  // 本样本块的输出（n·L 行 × C_out 列）
-
-	float* pinner_in = nullptr ; size_t capPinnerIn = 0;
-	float* pinner_out = nullptr ; size_t capPinnerOut = 0;
-
-	constexpr int Shared_Memory_Size = 45056;
-	constexpr int ppb = 8;//pipeline_per_block
-	constexpr int rpt = 2;//row_per_thread
-	constexpr int cpt = 2;//col_per_thread
-} // namespace
 namespace BCG = Bat_Convolution_Gpu;
 
 /// <summary>GPU 版多管道卷积：GCM(X,Y)[r][c] = Σ_k Conv(X[r][k], Y[k][c], p, s)。</summary>
@@ -52,7 +38,7 @@ namespace BCG = Bat_Convolution_Gpu;
 /// <param name="padding">四周补零的行列数（与 Convolution 同义）(数据中无p，心中有p(悲))</param>
 /// <param name="stride">滑窗步长</param>
 /// 规定，y对应行，x对应列
-__global__ void Convolution_GPU_kernal(const float* __restrict data,float* __restrict out,int Out_Row,int Out_Col,int Out_inner,int bat_inner_row,int bat_inner_col,int K,int padding,int stride) {
+__global__ void Convolution_GPU_kernal(const float* const __restrict data,float* __restrict out,int Out_Row,int Out_Col,int Out_inner,int bat_inner_row,int bat_inner_col,int K,int padding,int stride) {
 	
 	extern __shared__ float Mat_Region[];//存储ker和bat的数据
 	/*往这里添加，进行强度削减需要用到的常数*/

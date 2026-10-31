@@ -104,6 +104,11 @@ inline static Batch_Matrix Activate(const Batch_Matrix& bat, ActivationType type
     const std::vector<Matrix_Double>& mat = bat.GetInternalData();
     return Batch_Matrix(Activate(mat, type), bat.GetRowNum(), bat.GetColNum());
 }
+/// <summary>
+/// 储存了此次文件读写操作的相关数据，包括：
+/// is_good：操作是否正常结束.
+/// endIn：本次操作结束于哪个字节
+/// </summary>
 struct File_Handle_Inf
 {
     bool is_good;

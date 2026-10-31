@@ -3,6 +3,9 @@
 > 只用 C++ 标准库 + CUDA Runtime，从零写出矩阵与符号计算 → MLP / 多通道 CNN → CUDA 算子，
 > 并对每一次优化给出可复现的测量（包括**没变快**的那些）。
 
+> **只想快速看看效果？** 不需要 NVIDIA 显卡 / CUDA / SFML / 数据集：
+> 打开 `Demo_CPU.vcxproj` → 选 `Release | x64` → `Ctrl+F5`，约 1 秒跑完数学库 + MLP + CNN 演示
+> （说明见 [docs/DEMO_CPU.md](docs/DEMO_CPU.md)）。
 ## 这是什么 / 不是什么
 
 **是**：一个数学系学生的自学项目，主线是"从零实现 + 性能工程"。
@@ -181,6 +184,7 @@ $env:NN_EPOCHS="2"; $env:NN_ITERS="10"; $env:NN_BATCH="2000"
 | [CHANGELOG.md](CHANGELOG.md) | 版本更新记录与版本约定 |
 | [docs/V2_PLAN.md](docs/V2_PLAN.md) | v2 设备常驻计划、验收指标、里程碑 |
 | [docs/PITFALLS.md](docs/PITFALLS.md) | 踩坑记录（构建、索引、LDS、共享内存越界、数据集身份等） |
+| [docs/DEMO_CPU.md](docs/DEMO_CPU.md) | CPU 演示版（无 CUDA/SFML/数据集的快速评估） |
 | [docs/worklog/](docs/worklog/) | 开发日志（目标 / 假设 / 数据 / 结论） |
 | [docs/maintenance/](docs/maintenance/) | 维护日志（构建、测量工具等基础设施修复，与功能推进分开记） |
 

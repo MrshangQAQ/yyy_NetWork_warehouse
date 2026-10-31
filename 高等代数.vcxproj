@@ -113,7 +113,7 @@
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp20</LanguageStandard>
       <AdditionalIncludeDirectories>"C:\Users\26317\Desktop\SFML-3.1.0\include";%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
-      <AdditionalOptions>/Qvec-report:2 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>/Qvec-report:2 /source-charset:utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -128,7 +128,7 @@
       <Command>xcopy /y "C:\Users\26317\Desktop\SFML-3.1.0\bin\*.dll" "C:\Users\26317\source\repos\高等代数\x64\Debug\"</Command>
     </PostBuildEvent>
     <CudaCompile>
-      <AdditionalOptions>-std=c++20 -Xcompiler /openmp -Xcompiler /arch:AVX2 -Xptxas -v %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>-std=c++20 -Xcompiler /openmp -Xcompiler /arch:AVX2 -Xcompiler /source-charset:utf-8 -Xptxas -v %(AdditionalOptions)</AdditionalOptions>
       <CodeGeneration>compute_120,sm_120</CodeGeneration>
     </CudaCompile>
   </ItemDefinitionGroup>
@@ -144,6 +144,7 @@
       <AdditionalIncludeDirectories>"C:\Users\26317\Desktop\SFML-3.1.0\include";%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <EnableEnhancedInstructionSet>AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
       <OpenMPSupport>true</OpenMPSupport>
+      <AdditionalOptions>/source-charset:utf-8 %(AdditionalOptions)</AdditionalOptions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -158,12 +159,14 @@
       <Command>xcopy /y "C:\Users\26317\Desktop\SFML-3.1.0\bin\*.dll" "C:\Users\26317\source\repos\高等代数\x64\Release\"</Command>
     </PostBuildEvent>
     <CudaCompile>
-      <AdditionalOptions>-std=c++20 -Xcompiler /openmp -Xcompiler /arch:AVX2 %(AdditionalOptions)</AdditionalOptions>
+      <AdditionalOptions>-std=c++20 -Xcompiler /openmp -Xcompiler /arch:AVX2 -Xcompiler /source-charset:utf-8 %(AdditionalOptions)</AdditionalOptions>
       <CodeGeneration>compute_120,sm_120</CodeGeneration>
     </CudaCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="APP_Generate_Function_Graph.h" />
+    <ClInclude Include="Batch_Matrix_GPU.h" />
+    <ClInclude Include="Loss.h" />
     <ClInclude Include="Bench.h" />
     <ClInclude Include="APP_MNIST.h" />
     <ClInclude Include="Complex.h" />
@@ -176,8 +179,10 @@
     <ClCompile Include="APP_Generate_Function_Graph.cpp" />
     <ClCompile Include="APP_MNIST.cpp" />
     <ClCompile Include="Batch_Matrix.cpp" />
-    <ClCompile Include="Bench.cpp" />
+    <ClCompile Include="Loss.cpp" />
+    <ClCompile Include="Batch_Matrix_GPU.cpp" />
     <ClCompile Include="Batch_Matrix.h" />
+    <ClCompile Include="Bench.cpp" />
     <ClCompile Include="Complex.cpp" />
     <ClCompile Include="Complex_NeuralNetwork.cpp" />
     <ClCompile Include="MathFunction.cpp" />
@@ -192,6 +197,7 @@
     <ClCompile Include="Polynomial.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <CudaCompile Include="Batch_Matrix_GPU_.cu" />
     <CudaCompile Include="imcol2_GPU.cu" />
     <CudaCompile Include="Matrix_Double_Mutiple_GPU.cu" />
   </ItemGroup>

@@ -6,12 +6,15 @@
 #include <string>
 #include <vector>
 #include <random>
+#ifndef CPU_ONLY
 #include <cuda_runtime.h>
+#endif
 #include <omp.h>
 #include "Polynomial.h"
 #include "Complex.h"
 
 //宏，用于检查数据在存储数据之间的移动是否正常
+#ifndef CPU_ONLY
 #define CUDA_CHECK(call)                                                        \
     do {                                                                        \
         cudaError_t _err = (call);                                              \
@@ -20,6 +23,9 @@
                 std::to_string(__LINE__) + "  " + cudaGetErrorString(_err));    \
         }                                                                       \
     } while (0)
+#else
+#define CUDA_CHECK(call) do { (void)(call); } while (0)   // CPU 版工程里没有 CUDA 调用
+#endif
 
 class Matrix_Complex;
 class MatrixView_Complex;

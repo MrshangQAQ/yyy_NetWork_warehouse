@@ -6,8 +6,28 @@
 /// 与 imcol2_GPU.cu 中 GemmAccum_ThinN_Kernel 的共享内存数组尺寸保持一致，改一处必须同步改另一处。
 constexpr int kGemmThinNMax = 16;
 
+namespace Bat_Convolution_Gpu {
+	/// 常驻显存缓冲（跨调用复用）。定义在 Batch_Matrix_GPU_.cu（全项目唯一一份）；
+	/// 头文件里必须是 extern，否则每个包含它的 .cpp/.cu 都会定义一份 → LNK2005。
+	extern float* d_inMat_f; extern size_t capin;
+	extern float* d_outMat_f; extern size_t capout;
+	extern float* pinner_in; extern size_t capPinnerIn;
+	extern float* pinner_out; extern size_t capPinnerOut;
+
+	inline constexpr int Shared_Memory_Size = 45056;
+	inline constexpr int ppb = 8;//pipeline_per_block
+	inline constexpr int rpt = 2;//row_per_thread
+	inline constexpr int cpt = 2;//col_per_thread
+} // namespace Bat_Convolution_Gpu
+
+///注：此为非公用API，调用时需谨慎，可能发生未定义行为
+namespace Internal {
+	struct Batch_Matrix_Access;
+}
+
 class Batch_Matrix
 {
+	friend Internal::Batch_Matrix_Access;
 public:
 	//构造函数
 	Batch_Matrix(std::vector<Matrix_Double> data_,int rownum,int colnum);//当data_不足时，会自动补0矩阵
@@ -104,3 +124,10 @@ void GetConvolutionMatrixMul_Auto(const Batch_Matrix& bat, const Batch_Matrix& k
 void SetConvGpuThreshold(size_t macs);
 /// <summary>估算 GPU 卷积会开出的总线程数（用于判断这一个形状值不值得上 GPU）。</summary>
 size_t GetConvGpuThreadCount(int R, int C_out, int outRows, int outCols);
+
+struct Internal::Batch_Matrix_Access
+{
+	static std::vector<Matrix_Double>& GetInterData(Batch_Matrix& bat) {
+		return bat.data;
+	}
+}; 

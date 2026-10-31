@@ -699,12 +699,13 @@ void GetConvolutionMatrixMul_Auto(const Batch_Matrix& bat, const Batch_Matrix& k
 	const size_t macs = (size_t)R * (size_t)L * (size_t)C_in * (size_t)K * (size_t)K * (size_t)C_out;
 	const int outRows = (H - K) / stride + 1;
 	const int outCols = (W - K) / stride + 1;
+#ifndef CPU_ONLY
 	const size_t totalThreads = GetConvGpuThreadCount(R, C_out, outRows, outCols);
 	// 两个判据：总计算量够大 + 总线程数够多（否则 GPU 只有几十个线程在跑，反而不如 CPU）
 	if (macs >= gConvGpuThreshold && totalThreads >= 4096) {
 		GetConvolutionMatrixMul_GPU(bat, ker, out, padding, stride);   // 大卷积：GPU，直接写入 out
+		return;
 	}
-	else {
-		out = GetConvolutionMatrixMul(bat, ker, padding, stride);      // 小卷积：CPU
-	}
+#endif
+	out = GetConvolutionMatrixMul(bat, ker, padding, stride);          // CPU 路径（CPU_ONLY 工程必走这里）
 }

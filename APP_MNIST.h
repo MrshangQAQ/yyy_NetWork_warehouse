@@ -3,10 +3,8 @@
 #include <string>
 #include <vector>
 #include "NeuralNetwork.h"
-Matrix_Double CrossEntropyGradient(const Matrix_Double& z, const Matrix_Double& y);//计算反向传播得到的梯度矩阵
-std::vector<Matrix_Double>CrossEntropyGradient(const std::vector<Matrix_Double>& z, const std::vector<Matrix_Double>& y);//三阶张量的反向传播
+#include "Loss.h"   // 交叉熵/交叉熵梯度（与 MNIST 数据读写分离，CPU 演示工程也能用）
 
-double CrossEntropy(const Matrix_Double& z, const Matrix_Double& y,double approximation=0.01);//计算交叉熵（负的）
 
 /// <summary>读取 MNIST 图像文件（IDX3 格式），一次性读入全部图像。</summary>
 /// <param name="path">train-images-idx3-ubyte 文件的路径</param>

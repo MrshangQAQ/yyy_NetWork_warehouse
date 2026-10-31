@@ -36,6 +36,9 @@
     <ClInclude Include="APP_MNIST.h">
       <Filter>头文件</Filter>
     </ClInclude>
+    <ClInclude Include="Batch_Matrix_GPU.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="Complex.cpp">
@@ -86,12 +89,18 @@
     <ClCompile Include="main.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="Batch_Matrix_GPU.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <CudaCompile Include="Matrix_Double_Mutiple_GPU.cu">
       <Filter>源文件</Filter>
     </CudaCompile>
     <CudaCompile Include="imcol2_GPU.cu">
+      <Filter>源文件</Filter>
+    </CudaCompile>
+    <CudaCompile Include="Batch_Matrix_GPU_.cu">
       <Filter>源文件</Filter>
     </CudaCompile>
   </ItemGroup>

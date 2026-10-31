@@ -1,11 +1,12 @@
 ﻿#define _CRT_SECURE_NO_WARNINGS
-#define NETWORK_TEST 1
+#define NETWORK_TEST 0
 #include "Complex.h"
 #include "Polynomial.h"
 #include "Matrix.h"
 #include "MathFunction.h"
 #include "APP_MNIST.h"
 #include "Bench.h"
+#include "Batch_Matrix_GPU.h"
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -15,6 +16,9 @@
 #include <random>
 #include <string>
 #include <vector>
+
+
+namespace sc = std::chrono ;
 
 static double Function_X(double x) { return x; }
 
@@ -115,14 +119,49 @@ int main() {
 #endif // NETWORK_TEST
 
 	//单纯用于测试GPU的运行速度
-	Batch_Matrix bat(8, 8, 32, 65536);
-	Batch_Matrix ker(8, 8, 16, 16);
-	Batch_Matrix out(8, 8, 113, 113);
+	Batch_Matrix bat1(1, 1, 4, 4);
+	Batch_Matrix bat2(1, 1, 1, 1);
+	bat1.Random(0, 100);
+	bat2.Random(0, 100);
+	size_t* antipoll = nullptr;
+	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&antipoll),100*sizeof(size_t)));
+	GPUBatchMatrix GPUbat1(bat1);
+	GPUBatchMatrix GPUbat2(bat1);
+	GPUBatchMatrix GPUbat3;
+	MaxPoll(GPUbat1, GPUbat3, antipoll, 2);
+	std::vector<AntiPoll_Data> antipoll2=bat1.MaxPoll(2);
+
+	Batch_Matrix bat1_ = GPUbat3.ToCPUBat();
+	std::cout << bat1_.GetInternalData()[0] << std::endl;
+	std::cout << bat1.GetInternalData()[0] << std::endl;
+
+	AntiPoll_Timesf_Addto(GPUbat3, antipoll, 1, GPUbat1);
+	GPUbat1 -= GPUbat2;
+	bat1_ = GPUbat1.ToCPUBat();
+	std::cout << bat1_.GetInternalData()[0] << std::endl;
+	bat2 = GetAntiMaxPoll(bat1, 2, antipoll2);
+	std::cout << bat2.GetInternalData()[0] << std::endl;
+
+	Batch_Matrix ker(1, 1, 1, 1);
+	Batch_Matrix out(1, 1, 6, 6);
 	double test = 0;
-	const int N = 10;
-	for (int i = 0;i < N;i++) {
-		GetConvolutionMatrixMul_GPU(bat, ker, out);
+	const int N1 = 1;
+	auto start1 = sc::steady_clock::now();
+	for (int i = 0;i < N1;i++) {
+		GetConvolutionMatrixMul_GPU(bat1, ker, out);
 		test += out.GetInternalData()[0].GetData(0, 0);
 	}
+	auto end1 = sc::steady_clock::now();
+	auto ms1 = sc::duration_cast<sc::milliseconds>( end1- start1 );
+	std::cout << "GPU end，using time:" << ms1 << ",N:" << N1 << std::endl;
+	const int N2 = 0;
+	auto start2 = sc::steady_clock::now();
+	for (int i = 0;i < N2;i++) {
+		out=GetConvolutionMatrixMul(bat1,ker);
+		test += out.GetInternalData()[0].GetData(0, 0);
+	}
+	auto end2 = sc::steady_clock::now();
+	auto ms2 = sc::duration_cast<sc::milliseconds>( end2 - start2 );
+	std::cout << "GPU end，using time:" << ms2 << ",N:" << N2 << std::endl;
 	return 0;
 }
