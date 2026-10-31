@@ -15,6 +15,7 @@
 > **只想快速看看效果？** 不需要 NVIDIA 显卡 / CUDA / SFML / 数据集：
 > 打开 `Demo_CPU.vcxproj` → 选 `Release | x64` → `Ctrl+F5`，约 1 秒跑完数学库 + MLP + CNN 演示
 > （说明见 [docs/DEMO_CPU.md](docs/DEMO_CPU.md)）。
+
 ## 这是什么 / 不是什么
 
 **是**：一个数学系学生的自学项目，主线是"从零实现 + 性能工程"。
@@ -48,7 +49,7 @@
 #    data/train-images.idx3-ubyte / data/train-labels.idx1-ubyte
 #    data/t10k-images.idx3-ubyte  / data/t10k-labels.idx1-ubyte
 
-# 3) 训练基准（默认：卷积自动走 GPU，矩阵乘走 CPU）
+# 3) 短训练（默认 2 epoch、卷积自动走 GPU；NN_EPOCHS 可调）
 cd 高等代数
 .\x64\Release\高等代数.exe
 

@@ -26,6 +26,7 @@
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <PropertyGroup Label="SFML">
+    <SFMLDir Condition="'$(SFMLDir)' == '' and '$(SFML_DIR)' != ''">$(SFML_DIR)</SFMLDir>
     <SFMLDir Condition="'$(SFMLDir)' == ''">$(ProjectDir)third_party\SFML-3.1.0</SFMLDir>
   </PropertyGroup>
   <!-- 本机路径覆盖（该文件已被 .gitignore 排除；模板见 SFML.local.props.example） -->
