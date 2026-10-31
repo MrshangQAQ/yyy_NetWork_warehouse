@@ -6,7 +6,7 @@
 ## 速览
 
 - **是什么**：本人从零实现的 C++ 数学库 + 卷积神经网络 + 手写 CUDA 算子；
-- **性能测试**：CPU GEMM **37 GFLOP/s**（1024³）；手写 CUDA GEMM **5.48 TFLOPS**（4096³，约为该卡 FP32 峰值的 35~40%）；GPU 卷积前向比 CPU 快 7~11 倍。
+- **性能测试**：CPU GEMM **37 GFLOP/s**（1024³）；手写 CUDA GEMM **5.48 TFLOPS**（4096³，约为该卡 FP32 峰值的 35到40%）；GPU 卷积前向比 CPU 快 7到11 倍。
 - **想跑一下**：`Demo_CPU.vcxproj`（仅需 Visual Studio，1 秒，不需要 GPU/数据）；完整 GPU 版见[快速开始](#快速开始)。
 - **仓库**：<https://github.com/MrshangQAQ/yyy_NetWork_warehouse>
 
