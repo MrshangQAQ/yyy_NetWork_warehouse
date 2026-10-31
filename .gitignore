@@ -22,9 +22,7 @@ Release/
 *.tlog
 *.log
 
-# ===== 数据集（二进制大文件，约 55MB）=====
-*.idx1-ubyte
-*.idx3-ubyte
+# ===== 数据集：data/ 已入库（Fashion-MNIST，MIT，见 data/README.md）=====
 Train_data/
 
 # ===== 神经网络权重存档（二进制）=====

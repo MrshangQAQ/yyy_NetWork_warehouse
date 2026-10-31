@@ -1,43 +1,75 @@
-﻿#define _CRT_SECURE_NO_WARNINGS
-#define NETWORK_TEST 0
+#define _CRT_SECURE_NO_WARNINGS
+
+// 是否启用神经网络训练（默认开启；没有数据时会自动降级为微基准）
+#define NETWORK_TEST 1
+
 #include "Complex.h"
 #include "Polynomial.h"
 #include "Matrix.h"
 #include "MathFunction.h"
 #include "APP_MNIST.h"
 #include "Bench.h"
-#include "Batch_Matrix_GPU.h"
+#include "Loss.h"
+
 #include <chrono>
-#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <random>
 #include <string>
 #include <vector>
 
-
-namespace sc = std::chrono ;
-
 static double Function_X(double x) { return x; }
+
+// 依次尝试若干数据目录，返回第一个存在的数据集路径前缀；都不存在返回空串。
+static std::string FindDataPrefix() {
+	const char* candidates[] = {
+		"data/train-images.idx3-ubyte",
+		"train-images.idx3-ubyte",
+		"Train_data/Fasion/train-images-idx3-ubyte",
+		"Train_data/Fashion/train-images-idx3-ubyte",
+	};
+	for (const char* probe : candidates) {
+		std::FILE* f = std::fopen(probe, "rb");
+		if (f != nullptr) {
+			std::fclose(f);
+			const std::string s = probe;
+			const std::size_t cut = s.find("train-images");
+			if (cut != std::string::npos) return s.substr(0, cut);
+		}
+	}
+	return std::string();
+}
 
 int main() {
 	// ---- 微基准入口：NN_BENCH=matmul / conv / all（见 Bench.cpp 顶部注释）----
 	if (const char* benchOp = std::getenv("NN_BENCH")) { return RunBench(benchOp); }
-	// ---- 加速模式：NN_ACCEL = cpu / gpu / conv / matmul（默认 gpu）----
+
+	// ---- 加速模式：NN_ACCEL = cpu / gpu / conv / matmul（默认 conv）----
 	const char* env = std::getenv("NN_ACCEL");
-	const std::string mode = env ? env : "conv";   // 实测：conv 是最佳默认（matmul 走 GPU 反而更慢，见报告）
+	const std::string mode = env ? env : "conv";
 	const bool useConvGpu = (mode == "gpu" || mode == "conv");
-	const bool useMatMulGpu = (mode == "gpu" || mode == "matmul");   // CPU 版矩阵乘在 128×1024×2000 这类形状上更快
+	const bool useMatMulGpu = (mode == "gpu" || mode == "matmul");
 	const size_t kNever = (std::numeric_limits<size_t>::max)();
 	SetConvGpuThreshold(useConvGpu ? (size_t)8 * 1024 * 1024 : kNever);
-	SetMatMulGpuThreshold(useMatMulGpu ? (size_t)2 * 1024 * 1024 : kNever);   // A 路径后 GPU 矩阵乘已反超 CPU（见 bench）
-	std::cout << "[bench] NN_ACCEL=" << mode
+	SetMatMulGpuThreshold(useMatMulGpu ? (size_t)2 * 1024 * 1024 : kNever);
+	std::cout << "[main] NN_ACCEL=" << mode
 		<< "  conv=" << (useConvGpu ? "auto(GPU)" : "CPU")
 		<< "  matmul=" << (useMatMulGpu ? "auto(GPU)" : "CPU") << std::endl;
+
 #if NETWORK_TEST
-	// ---- 网络结构（与原来一致）----
+	const std::string prefix = FindDataPrefix();
+	if (prefix.empty()) {
+		std::cout << "[main] 未找到 MNIST/Fashion-MNIST 数据（应为 data/train-images.idx3-ubyte 等 4 个文件）。\n"
+			<< "[main] 数据已随仓库提供（data/ 目录）；若缺失请见 README『数据集与许可』一节。\n"
+			<< "[main] 现在改为运行微基准（不需要数据集）..." << std::endl;
+		return RunBench("all");
+	}
+	std::cout << "[main] 数据目录: " << prefix << std::endl;
+
+	// ---- 网络结构（MNIST 28x28：3 层卷积 + 2 层全连接）----
 	std::vector<int> kers = { 9, 5, 5 };
 	std::vector<int> cnn_ves = { 16, 16, 16 };
 	std::vector<ActivationType> cnn_acts = { ActivationType::ReLU, ActivationType::ReLU, ActivationType::Sigmoid };
@@ -49,12 +81,12 @@ int main() {
 	auto mlp = std::make_shared<NeuralNetwork_MLP>(mlp_ves, mlp_acts);
 	Complex_NeuralNetwork net({ cnn, mlp });
 
-	// ---- 数据（需在仓库根目录运行）----
-	Matrix_Double Feature = LoadMNISTImages("train-images.idx3-ubyte");
-	Matrix_Double Result = LabelsToOneHot(LoadMNISTLabels("train-labels.idx1-ubyte"));
-	Matrix_Double TextF = LoadMNISTImages("t10k-images.idx3-ubyte");
-	Matrix_Double TextR = LabelsToOneHot(LoadMNISTLabels("t10k-labels.idx1-ubyte"));
-	std::cout << "[bench] train=" << Feature.GetColNum() << "  test=" << TextF.GetColNum() << std::endl;
+	// ---- 数据 ----
+	Matrix_Double Feature = LoadMNISTImages(prefix + "train-images.idx3-ubyte");
+	Matrix_Double Result = LabelsToOneHot(LoadMNISTLabels(prefix + "train-labels.idx1-ubyte"));
+	Matrix_Double TextF = LoadMNISTImages(prefix + "t10k-images.idx3-ubyte");
+	Matrix_Double TextR = LabelsToOneHot(LoadMNISTLabels(prefix + "t10k-labels.idx1-ubyte"));
+	std::cout << "[main] train=" << Feature.GetColNum() << "  test=" << TextF.GetColNum() << std::endl;
 
 	std::mt19937 gen(12345);
 	std::uniform_int_distribution<int> distTrain(0, 59999);
@@ -65,10 +97,10 @@ int main() {
 	const char* envEpochs = std::getenv("NN_EPOCHS");
 	const int batch = envBatch ? std::atoi(envBatch) : 2000;
 	const int itersPerEpoch = envIters ? std::atoi(envIters) : 10;
-	const int epochs = envEpochs ? std::atoi(envEpochs) : 10;
+	const int epochs = envEpochs ? std::atoi(envEpochs) : 2;   // 默认短跑，便于快速验证
 	double lr = 0.3;
 
-	// 预热（不进计时）：让 GPU 侧缓冲/锁页内存、内核首次加载都就绪
+	// 预热（不计时）：让 GPU 缓冲/锁页内存/内核首次加载就绪
 	{
 		std::vector<int> idx(200);
 		for (int i = 0; i < 200; ++i) idx[i] = distTrain(gen);
@@ -87,9 +119,7 @@ int main() {
 			std::vector<Matrix_Double> y = UnFlattenToBatch(Result.GetMinorByVec(idx), 10, 1);
 			std::vector<Matrix_Double> z = net.Forward(x);
 			net.Back(lr, CrossEntropyGradient(z, y), -9, Function_X);
-			std::cout << (1 + it) * 10 << "%";
 		}
-		std::cout << std::endl;
 		auto t1 = std::chrono::steady_clock::now();
 		const double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
 		lr /= 1.03;
@@ -114,54 +144,9 @@ int main() {
 			for (int k = 0; k < 10; ++k) if (TR[s].GetData(k, 0) > 0.5) { label = k; break; }
 			if (argmax == label) ++hit;
 		}
-		std::cout << "[bench] epoch " << ep + 1 << "  time=" << (long long)ms<< " ms  acc=" << (double)hit / N << std::endl;
+		std::cout << "[train] epoch " << ep + 1 << "  time=" << (long long)ms
+			<< " ms  acc=" << (double)hit / N << std::endl;
 	}
 #endif // NETWORK_TEST
-
-	//单纯用于测试GPU的运行速度
-	Batch_Matrix bat1(1, 1, 4, 4);
-	Batch_Matrix bat2(1, 1, 1, 1);
-	bat1.Random(0, 100);
-	bat2.Random(0, 100);
-	size_t* antipoll = nullptr;
-	CUDA_CHECK(cudaMalloc(reinterpret_cast<void**>(&antipoll),100*sizeof(size_t)));
-	GPUBatchMatrix GPUbat1(bat1);
-	GPUBatchMatrix GPUbat2(bat1);
-	GPUBatchMatrix GPUbat3;
-	MaxPoll(GPUbat1, GPUbat3, antipoll, 2);
-	std::vector<AntiPoll_Data> antipoll2=bat1.MaxPoll(2);
-
-	Batch_Matrix bat1_ = GPUbat3.ToCPUBat();
-	std::cout << bat1_.GetInternalData()[0] << std::endl;
-	std::cout << bat1.GetInternalData()[0] << std::endl;
-
-	AntiPoll_Timesf_Addto(GPUbat3, antipoll, 1, GPUbat1);
-	GPUbat1 -= GPUbat2;
-	bat1_ = GPUbat1.ToCPUBat();
-	std::cout << bat1_.GetInternalData()[0] << std::endl;
-	bat2 = GetAntiMaxPoll(bat1, 2, antipoll2);
-	std::cout << bat2.GetInternalData()[0] << std::endl;
-
-	Batch_Matrix ker(1, 1, 1, 1);
-	Batch_Matrix out(1, 1, 6, 6);
-	double test = 0;
-	const int N1 = 1;
-	auto start1 = sc::steady_clock::now();
-	for (int i = 0;i < N1;i++) {
-		GetConvolutionMatrixMul_GPU(bat1, ker, out);
-		test += out.GetInternalData()[0].GetData(0, 0);
-	}
-	auto end1 = sc::steady_clock::now();
-	auto ms1 = sc::duration_cast<sc::milliseconds>( end1- start1 );
-	std::cout << "GPU end，using time:" << ms1 << ",N:" << N1 << std::endl;
-	const int N2 = 0;
-	auto start2 = sc::steady_clock::now();
-	for (int i = 0;i < N2;i++) {
-		out=GetConvolutionMatrixMul(bat1,ker);
-		test += out.GetInternalData()[0].GetData(0, 0);
-	}
-	auto end2 = sc::steady_clock::now();
-	auto ms2 = sc::duration_cast<sc::milliseconds>( end2 - start2 );
-	std::cout << "GPU end，using time:" << ms2 << ",N:" << N2 << std::endl;
 	return 0;
 }

@@ -3,6 +3,15 @@
 > 只用 C++ 标准库 + CUDA Runtime，从零写出矩阵与符号计算 → MLP / 多通道 CNN → CUDA 算子，
 > 并对每一次优化给出可复现的测量（包括**没变快**的那些）。
 
+## 30 秒速览（给老师 / 面试官）
+
+- **是什么**：数学系大二学生从零实现的 C++ 数学库 + 卷积神经网络 + 手写 CUDA 算子；
+  矩阵、卷积、池化、反向传播全部手写，未用 Eigen / BLAS / cuBLAS / cuDNN。
+- **三个数字**：CPU GEMM **37 GFLOP/s**（1024³）；手写 CUDA GEMM **5.48 TFLOPS**（4096³，约为该卡 FP32 峰值的 35~40%）；GPU 卷积前向比 CPU 快 **7~11 倍**。
+- **最值得看的一页**：[为什么 GPU 卷积只快了 1.27 倍](#为什么-gpu-卷积只快了-127-倍)——算术强度、边界成本与 Amdahl 的测量分析。
+- **想跑一下**：`Demo_CPU.vcxproj`（仅需 Visual Studio，1 秒，不需要 GPU/数据）；完整 GPU 版见[快速开始](#快速开始)。
+- **仓库**：<https://github.com/MrshangQAQ/yyy_NetWork_warehouse>
+
 > **只想快速看看效果？** 不需要 NVIDIA 显卡 / CUDA / SFML / 数据集：
 > 打开 `Demo_CPU.vcxproj` → 选 `Release | x64` → `Ctrl+F5`，约 1 秒跑完数学库 + MLP + CNN 演示
 > （说明见 [docs/DEMO_CPU.md](docs/DEMO_CPU.md)）。
@@ -35,10 +44,9 @@
 # 1) 构建（.cu 有改动时必须「重新生成解决方案」，详见 docs/PITFALLS.md）
 #    用 VS 打开 高等代数.slnx，选 Release | x64 → 重新生成解决方案
 
-# 2) 准备数据：把 MNIST 格式的 4 个 idx 文件放到仓库根目录（已被 .gitignore 排除）：
-#    train-images.idx3-ubyte / train-labels.idx1-ubyte
-#    t10k-images.idx3-ubyte  / t10k-labels.idx1-ubyte
-#    注意：本仓库使用的这批文件内容实际是 Fashion-MNIST（见 PITFALLS 第 5 条）
+# 2) 数据已随仓库提供（data/，Fashion-MNIST，MIT，见『数据集与许可』）：
+#    data/train-images.idx3-ubyte / data/train-labels.idx1-ubyte
+#    data/t10k-images.idx3-ubyte  / data/t10k-labels.idx1-ubyte
 
 # 3) 训练基准（默认：卷积自动走 GPU，矩阵乘走 CPU）
 cd 高等代数
@@ -55,13 +63,23 @@ $env:NN_EPOCHS="2"; $env:NN_ITERS="10"; $env:NN_BATCH="2000"
 预期输出：
 
 ```
-[bench] NN_ACCEL=conv  conv=auto(GPU)  matmul=CPU
-[bench] train=60000  test=10000
-[bench] epoch 1  time=10890 ms  acc=...
-[bench] epoch 2  time=10246 ms  acc=...
+[main] NN_ACCEL=conv  conv=auto(GPU)  matmul=CPU
+[main] 数据目录: data/
+[main] train=60000  test=10000
+[train] epoch 1  time=10890 ms  acc=...
+[train] epoch 2  time=10246 ms  acc=...
 ```
 
 > 准确率数字只用于确认"还能学"；短基准的主要目的是测时间，不是刷精度。
+
+## 数据集与许可
+
+- 仓库内 `data/` 附带 **Fashion-MNIST**（文件名沿用 MNIST IDX 约定），**MIT License**：
+  来源 <https://github.com/zalandoresearch/fashion-mnist>，
+  许可证全文见 [data/LICENSE-Fashion-MNIST](data/LICENSE-Fashion-MNIST)。
+- 原始 MNIST 由 Yann LeCun、Corinna Cortes、Christopher Burges 发布
+  （<http://yann.lecun.com/exdb/mnist/>）；如需替换为原始 MNIST，按其页面说明使用并遵守其条款。
+- 代码采用 **MIT License**，见 [LICENSE](LICENSE)。
 
 ## 实测数据（可复现）
 
@@ -155,8 +173,8 @@ $env:NN_EPOCHS="2"; $env:NN_ITERS="10"; $env:NN_BATCH="2000"
   梯度检查和 CI。
 - GPU 卷积训练集成只有 1.27×：边界成本与 Amdahl 限制，详见上文。
 - 反传 dK 的畸形形状（输出只有 9×9）并行度太低，目前走 CPU。
-- 完整训练（30 epoch）的精度记录在 [docs/worklog/](docs/worklog/)，但尚未整理成可复现脚本。
-- 数据集文件不入库（约 55 MB）；本仓库这批文件实际是 Fashion-MNIST。
+- 完整训练（30 epoch）尚未整理成一键脚本；默认入口只跑 2 epoch 的短训练（可用 `NN_EPOCHS` 调整）。
+- 数据集已随仓库提供（`data/`，Fashion-MNIST，MIT）；如需换成原始 MNIST 需自行下载替换。
 
 ## 开发过程（为什么代码会长成这样）
 
@@ -188,6 +206,7 @@ $env:NN_EPOCHS="2"; $env:NN_ITERS="10"; $env:NN_BATCH="2000"
 | [CHANGELOG.md](CHANGELOG.md) | 版本更新记录与版本约定 |
 | [docs/V2_PLAN.md](docs/V2_PLAN.md) | v2 设备常驻计划、验收指标、里程碑 |
 | [docs/PITFALLS.md](docs/PITFALLS.md) | 踩坑记录（构建、索引、LDS、共享内存越界、数据集身份等） |
+| [data/README.md](data/README.md) | 数据集（Fashion-MNIST）来源、许可与格式说明 |
 | [docs/DEMO_CPU.md](docs/DEMO_CPU.md) | CPU 演示版（无 CUDA/SFML/数据集的快速评估） |
 | [docs/CODE_TOUR.md](docs/CODE_TOUR.md) | 代码导览（给读代码的同学：阅读顺序与设计决策） |
 | [docs/worklog/](docs/worklog/) | 开发日志（目标 / 假设 / 数据 / 结论） |
@@ -201,4 +220,7 @@ $env:NN_EPOCHS="2"; $env:NN_ITERS="10"; $env:NN_BATCH="2000"
 
 ## License
 
-个人学习项目，仅用于学习与展示。
+- 代码：[MIT License](LICENSE)。
+- 随仓库附带的数据集：Fashion-MNIST（MIT），见 [data/LICENSE-Fashion-MNIST](data/LICENSE-Fashion-MNIST)。
+
+个人学习项目，欢迎参考；用于其他用途请遵守上述两个许可证。

@@ -10,6 +10,14 @@
 - **v1.2（计划）**：pack/unpack 改 AVX2 + 锁页/异步传输 → 目标：卷积边界成本减半（约 130 ms → 60~80 ms/批），epoch ≤ 9.5 s。
 - **v2.0（计划）**：设备常驻 CNN 执行模型（`GpuTensor` + 融合 kernel + 前后向全程显存），目标 epoch ≤ 4 s。详见 [docs/V2_PLAN.md](docs/V2_PLAN.md)。
 
+## 未发布的工程改动（发布准备）
+
+- 数据集随仓库提供：`data/` 下放入 Fashion-MNIST（MIT License，见 `data/LICENSE-Fashion-MNIST`），
+  `main` 自动在 `data/` / 仓库根目录 / `Train_data/Fasion/` 查找；无数据时自动降级为微基准；
+- `main.cpp` 默认入口改为短训练（2 epoch，可用 `NN_EPOCHS` 调整），移除调试代码；
+- 新增代码 LICENSE（MIT）与数据 LICENSE；
+- README 增加「30 秒速览」「数据集与许可」，并更新运行输出示例；
+
 ## 未发布的工程改动（演示/可移植性）
 
 - 完整工程 SFML 路径改为可配置：默认 `third_party/SFML-3.1.0`，可用 `SFML.local.props`（不入库）或环境变量 `SFML_DIR` 覆盖；

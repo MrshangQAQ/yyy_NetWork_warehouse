@@ -59,7 +59,7 @@
 | Visual Studio | 2022 或 2026，勾选"使用 C++ 的桌面开发" |
 | CUDA Toolkit | ≥ 12.8（目标 `sm_120`；更老的显卡需改工程里的 `CodeGeneration`） |
 | SFML | 3.1.0（仅手写数字画板 Demo）；解压到 `third_party/SFML-3.1.0`，或用 `SFML.local.props` / 环境变量 `SFML_DIR` 指定路径 |
-| 数据集 | MNIST / Fashion-MNIST 的 4 个 IDX 文件放仓库根目录（约 52 MB，不入库） |
+| 数据集 | 已随仓库提供于 `data/`（Fashion-MNIST，MIT License）；也可换成原始 MNIST |
 
 > 完整工程目前是"能编译、可运行"的状态；`Batch_Matrix_GPU.*` 是 v2 设备常驻的重构中代码，
 > 接口可能还会变，**不影响**上面第 1 节推荐的阅读路线。
