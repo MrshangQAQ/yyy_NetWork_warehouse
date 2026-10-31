@@ -61,10 +61,10 @@
 
 - CUDA 手写 GEMM（4096³ 约 **5.48 TFLOPS**，见 `BASELINE.md`）；
 - CUDA 手写卷积 kernel（比 CPU 前向快 **7~11 倍**）；
-- MNIST/Fashion-MNIST 训练（短跑 2 epoch 可验证"能训练"；`NN_EPOCHS` 可加长）与自定义手写数字画板（SFML）；
+- MNIST 训练（短跑 2 epoch 可验证"能训练"；`NN_EPOCHS` 可加长）与自定义手写数字画板（SFML）；
 - 自适应 CPU/GPU 调度与测量工具 `Bench`。
 
-完整工程需要：**NVIDIA 显卡 + CUDA ≥ 12.8 + SFML 3.1.0**；数据已随仓库提供（`data/`，Fashion-MNIST，MIT）。门槛较高，所以另做了这个 CPU 演示版。
+完整工程需要：**NVIDIA 显卡 + CUDA ≥ 12.8 + SFML 3.1.0**；数据已随仓库提供（`data/`，原始 MNIST）。门槛较高，所以另做了这个 CPU 演示版。
 
 ## 五、限制（如实说明）
 

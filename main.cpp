@@ -62,7 +62,7 @@ int main() {
 #if NETWORK_TEST
 	const std::string prefix = FindDataPrefix();
 	if (prefix.empty()) {
-		std::cout << "[main] 未找到 MNIST/Fashion-MNIST 数据（应为 data/train-images.idx3-ubyte 等 4 个文件）。\n"
+		std::cout << "[main] 未找到 MNIST 数据（应为 data/train-images.idx3-ubyte 等 4 个文件）。\n"
 			<< "[main] 数据已随仓库提供（data/ 目录）；若缺失请见 README『数据集与许可』一节。\n"
 			<< "[main] 现在改为运行微基准（不需要数据集）..." << std::endl;
 		return RunBench("all");

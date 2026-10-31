@@ -12,7 +12,7 @@
 
 ## 未发布的工程改动（发布准备）
 
-- 数据集随仓库提供：`data/` 下放入 Fashion-MNIST（MIT License，见 `data/LICENSE-Fashion-MNIST`），
+- 数据集随仓库提供：`data/` 下放入**原始 MNIST**（版权/条款见 `data/README.md`），
   `main` 自动在 `data/` / 仓库根目录 / `Train_data/Fasion/` 查找；无数据时自动降级为微基准；
 - `main.cpp` 默认入口改为短训练（2 epoch，可用 `NN_EPOCHS` 调整），移除调试代码；
 - 新增代码 LICENSE（MIT）与数据 LICENSE；

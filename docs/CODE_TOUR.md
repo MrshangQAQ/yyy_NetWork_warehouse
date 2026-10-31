@@ -27,7 +27,7 @@
 | 1 | `Matrix.h` / `Matrix_Double.cpp` | 行主序连续存储；OpenMP + AVX2 + 4×8 寄存器分块的 CPU GEMM；有理数/多项式/矩阵分解等数学库 |
 | 2 | `Batch_Matrix.h` / `Batch_Matrix.cpp` | 4 维张量 `[R][C][H][W]` 的存储约定；im2col + GEMM 的 CPU 卷积；maxpool 的 argmax 索引缓存 |
 | 3 | `NeuralNetwork.h` / `NeuralNetwork_MLP.cpp` / `NeuralNetwork_MULCNN.cpp` | 手写前向/反向：ReLU/Sigmoid/Tanh、反池化（按 argmax scatter）、卷积转置、dK 归约；`Complex_NeuralNetwork` 负责串层 |
-| 4 | `Loss.h` / `Loss.cpp` / `APP_MNIST.cpp` | Softmax + 交叉熵梯度；MNIST/Fashion-MNIST 的 IDX 文件读取 |
+| 4 | `Loss.h` / `Loss.cpp` / `APP_MNIST.cpp` | Softmax + 交叉熵梯度；MNIST 的 IDX 文件读取 |
 | 5 | `Matrix_Double_Mutiple_GPU.cu` | 手写 CUDA SGEMM：共享内存 tiling + 4×4 寄存器分块 + 合并访存；`ABLATION_MODE` 消融实验（只加载/只计算/完整） |
 | 6 | `imcol2_GPU.cu` | 手写直接卷积 kernel：共享内存 tile + 32 个寄存器累加器；CPU/GPU 自适应调度（阈值 + 总线程数判据） |
 | 7 | `Bench.cpp` / `run_bench.cmd` / `run_bench.ps1` | 单算子微基准：同进程交替采样、min/median、有效 GFLOP/s；这是判断"优化有没有用"的尺子 |
@@ -59,7 +59,7 @@
 | Visual Studio | 2022 或 2026，勾选"使用 C++ 的桌面开发" |
 | CUDA Toolkit | ≥ 12.8（目标 `sm_120`；更老的显卡需改工程里的 `CodeGeneration`） |
 | SFML | 3.1.0（仅手写数字画板 Demo）；解压到 `third_party/SFML-3.1.0`，或用 `SFML.local.props` / 环境变量 `SFML_DIR` 指定路径 |
-| 数据集 | 已随仓库提供于 `data/`（Fashion-MNIST，MIT License）；也可换成原始 MNIST |
+| 数据集 | 已随仓库提供于 `data/`（原始 MNIST；条款见 `data/README.md`） |
 
 > 完整工程目前是"能编译、可运行"的状态；`Batch_Matrix_GPU.*` 是 v2 设备常驻的重构中代码，
 > 接口可能还会变，**不影响**上面第 1 节推荐的阅读路线。

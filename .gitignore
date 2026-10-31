@@ -22,7 +22,7 @@ Release/
 *.tlog
 *.log
 
-# ===== 数据集：data/ 已入库（Fashion-MNIST，MIT，见 data/README.md）=====
+# ===== 数据集：data/ 已入库（原始 MNIST，条款见 data/README.md）=====
 Train_data/
 
 # ===== 神经网络权重存档（二进制）=====

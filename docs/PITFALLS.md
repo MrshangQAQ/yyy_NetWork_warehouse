@@ -42,10 +42,10 @@ int ColOut = (blockIdx.x * kBlockSize + tx) * kRowsPerThr;  // 列用了行步�
 
 ## 5. 数据集身份
 
-排查"训练不收敛"数天后发现：文件名是 MNIST，内容其实是 **Fashion-MNIST**
+曾排查"训练不收敛"数天后发现：`Train_data/Fasion/` 里那份文件格式与 MNIST 完全一致，内容其实是 **Fashion-MNIST**
 （官方刻意做成 MNIST 的平替，格式与魔数完全一致）。
 
-**教训**：模型不 work 时，**先看数据**，而不是先改网络结构。
+后来把 `data/` 换成原始 MNIST，并用画板/ASCII 渲染确认前几个样本是手写数字 5、0、4。
 
 ## 6. `Matrix_Double(int size)` 构造的是方阵
 
