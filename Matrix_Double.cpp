@@ -492,11 +492,11 @@ Matrix_Double Matrix_Double::InIGetMinor(int BeginRow, int EndRow, int BeginCol,
 	int NewRowNum = EndRow - BeginRow + 1;
 	int NewColNum = EndCol - BeginCol + 1;
 	std::vector<double> newData(NewRowNum*NewColNum);
-	for (int row = 0;row <=NewRowNum ;row++) {
+	for (int row = 0;row < NewRowNum;row++) {
 		double* New_Base_Address = &newData[row * NewColNum];
 		const double* Mat_Base_Address = &data[(row+BeginRow)*colNum_+BeginCol];
-		for (int col = 0;col <= NewColNum;col++) {
-			New_Base_Address[col]=data[col];
+		for (int col = 0;col < NewColNum;col++) {
+			New_Base_Address[col]= Mat_Base_Address[col];
 		}
 	}
 	return Matrix_Double(std::move(newData), NewRowNum, NewColNum);
